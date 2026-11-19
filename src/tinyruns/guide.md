@@ -1,6 +1,6 @@
 ---
 name: tinyruns
-description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, input runs, datasets, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
+description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, checkpoints, input runs, datasets, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
 ---
 
 # Getting started with tinyruns
@@ -95,9 +95,66 @@ uv run tinyruns pull <run_id>
 - **`tinyruns logs <run_id>`** shows the end of the Slurm log, `--lines <n>` of it.
 - **`tinyruns ls`** lists the runs known on your machine, without asking the cluster.
 - **`tinyruns cancel <run_id>`** cancels the job and returns when Slurm has ended it. The run is then failed.
-- **`tinyruns resume <run_id>`** queues a failed run again, in its directory, with the same code and config.
+- **`tinyruns resume <run_id>`** queues a failed run again, in its directory, with the same code and config. Its stages start again from the first; [step 7](#7-continue-a-run-from-a-checkpoint) lets a stage continue where it stopped.
 
-## 7. Read another run
+## 7. Continue a run from a checkpoint
+
+tinyruns saves no checkpoints. A stage that should continue where it stopped saves its own into `heavy/`, and loads the last one when it starts:
+
+```python
+import os
+from typing import Any
+
+import torch
+
+from my_project.model import new_model, training_loss
+from tinyruns.run_directory import RunDirectory, append_metrics
+
+
+def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
+    settings = config["train"]
+    run_directory.heavy_directory.mkdir(exist_ok=True)
+    checkpoint_path = run_directory.heavy_directory / "checkpoint.pt"
+    partial_path = run_directory.heavy_directory / "checkpoint.pt.partial"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = new_model(settings).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=settings["learning_rate"])
+    steps_done = 0
+    if checkpoint_path.exists():
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        steps_done = checkpoint["steps_done"]
+    while steps_done < settings["steps"]:
+        loss = training_loss(model, steps_done)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        steps_done += 1
+        if steps_done % settings["checkpoint_every"] == 0:
+            checkpoint = {
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "steps_done": steps_done,
+            }
+            torch.save(checkpoint, partial_path)
+            os.replace(partial_path, checkpoint_path)
+            append_metrics(run_directory, {"step": steps_done, "loss": loss.item()})
+```
+
+`new_model` and `training_loss` stand for the project's own code.
+
+- **A job that Slurm ended is a failed run.** A run that reached its time limit or was cancelled resumes like one that raised an error.
+- **A resumed run keeps its directory,** with what the stages wrote into `heavy/`, and runs the same code and config in the same image.
+- **Every stage runs again.** tinyruns does not record which stages finished, so each stage skips the work it finds done. The stage above finds its last checkpoint and trains no further.
+- **Replace a checkpoint in one step.** Slurm can end the job in the middle of a write, and `os.replace` leaves the old checkpoint or the new one, never half of one.
+- **Save all that the loop needs.** Beyond the model, the optimizer and the step count, that can be a learning-rate schedule, and the random state if the continued run must match an uninterrupted one.
+- **Load onto the device at hand.** With `map_location`, a checkpoint saved on a GPU also loads where there is none, such as in a pulled run on your machine.
+- **Record metrics when a checkpoint is saved.** `metrics.jsonl` is only appended to, so steps recorded after the last checkpoint are recorded again by the next attempt.
+- **A resumed job gets the same resources,** the time limit and the memory among them. A training longer than the time limit is resumed until it is done; nothing queues it again by itself. A run that needs more memory is submitted anew with other `--resources`, and starts from the beginning.
+- **Try it on your machine first.** `tinyruns resume` takes only runs on the cluster. For a run made by `tinyruns new`, interrupt the command of [step 4](#4-try-it-on-your-machine) and give it again: the stage must continue from its checkpoint. A smoke run tests this only if it is long enough to save one.
+
+## 8. Read another run
 
 A run reads the outputs of a finished run through a named input, so one training run can be evaluated many times.
 
@@ -107,7 +164,7 @@ A run reads the outputs of a finished run through a named input, so one training
 - **For a local rerun, pull the input run too:** `tinyruns pull <input_run_id> --heavy`.
 - **Runs do not cross projects.** An input is a sibling directory of the run that reads it.
 
-## 8. Read a dataset
+## 9. Read a dataset
 
 A model or a dataset on the Hugging Face Hub needs no place of its own: `HF_HOME` is a cache that the project's runs share, a smoke run downloads into it, and a full run reads it offline. A dataset from anywhere else goes into the data directory.
 
@@ -115,7 +172,7 @@ A model or a dataset on the Hugging Face Hub needs no place of its own: `HF_HOME
 - **In the stage,** `data_directory(run_directory)` from `tinyruns.run_data` returns the data directory, on your machine and in a job alike: `data_directory(run_directory) / "my_dataset"`.
 - **`tinyruns push-data`** copies `artifacts/data/` to the cluster. It adds and replaces files and deletes none, so a dataset that is only on the cluster stays there.
 - **On the cluster** the data directory is `data/` under the profile's `scratch_root`. A dataset too large for your machine can be put there directly.
-- **A job gets the data directory read-only.** What a run makes of a dataset goes into its own `heavy/`, and other runs read it as an [input](#7-read-another-run).
+- **A job gets the data directory read-only.** What a run makes of a dataset goes into its own `heavy/`, and other runs read it as an [input](#8-read-another-run).
 - **A config names a dataset by its directory name,** never by a path.
 - **A run does not record its datasets.** The manifest holds the code and the config, not the content of the data directory. Put a version into the directory name of a dataset that can change.
 
