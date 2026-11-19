@@ -79,6 +79,14 @@ def test_job_runs_the_snapshot_with_the_cluster_environment(
     assert not (snapshot_directory / "configs").exists()
 
 
+def test_manifest_names_the_cluster_and_the_resources(tinyruns: Command) -> None:
+    manifest = tinyruns("submit", "configs/marker.yaml", "--smoke").output
+
+    assert manifest["cluster"]["name"] == "fake-cluster"
+    assert manifest["resources"]["name"] == "cpu-small"
+    assert manifest["tinyruns_version"]
+
+
 def test_pulled_run_reruns_locally_without_edits(
     tinyruns: Command, repository: Path
 ) -> None:

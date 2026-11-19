@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import importlib.metadata
 import itertools
 import json
 import re
@@ -110,6 +111,7 @@ def local_manifest(plan: PlannedRun) -> dict[str, Any]:
     return {
         "run_id": plan.run_id,
         "created_at": current_time(),
+        "tinyruns_version": importlib.metadata.version("tinyruns"),
         "config_name": plan.config_name,
         "config_hash": plan.config_hash,
         "smoke": plan.smoke,

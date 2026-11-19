@@ -122,6 +122,7 @@ def cluster_manifest(plan: PlannedRun, placement: ClusterPlacement) -> dict[str,
         **local_manifest(plan),
         "resources": dataclasses.asdict(placement.resources),
         "cluster": {
+            "name": placement.profile.name,
             "ssh_host": placement.profile.ssh_host,
             "run_directory": placement.run_directory,
         },

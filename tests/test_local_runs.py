@@ -1,3 +1,4 @@
+import importlib.metadata
 import json
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from conftest import (
     write_config,
 )
 
+TINYRUNS_VERSION = importlib.metadata.version("tinyruns")
+
 
 def test_new_run_is_created_and_run_without_the_cluster(
     tinyruns: Command, repository: Path, cluster: FakeCluster
@@ -26,6 +29,7 @@ def test_new_run_is_created_and_run_without_the_cluster(
     assert run_id.endswith("-smoke")
     assert created.output["directory"] == f"artifacts/runs/{run_id}"
     assert created.output["cluster"] is None
+    assert created.output["tinyruns_version"] == TINYRUNS_VERSION
     frozen_config = yaml.safe_load((run_directory / "config.yaml").read_text())
     assert frozen_config["smoke_test"]["enabled"] is True
     assert tinyruns("status", run_id).output["state"] == "created"
