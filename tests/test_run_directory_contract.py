@@ -1,3 +1,4 @@
+import ast
 import functools
 import http.server
 import json
@@ -11,11 +12,13 @@ from typing import Any
 import pytest
 import yaml
 
+import tinyruns
 from tinyruns.run import run_stages, selected_stage_names
 from tinyruns.run_config import RunConfigError, validate_run_config
 from tinyruns.run_directory import RunDirectory, read_status
 from tinyruns.stages.environment_check import url_response
 
+PACKAGE_DIRECTORY = Path(tinyruns.__file__).parent
 CLOSED_PORT_URL = "http://127.0.0.1:1"
 ENVIRONMENT_CHECK_STAGE = "tinyruns.stages.environment_check"
 
@@ -136,6 +139,38 @@ def test_last_part_shared_by_two_stages_selects_neither() -> None:
     with pytest.raises(RunConfigError, match="names 2 of this run's stages"):
         selected_stage_names(config, only_stage="run")
     assert selected_stage_names(config, only_stage="training.run") == ["training.run"]
+
+
+def modules_named_by(node: ast.AST) -> list[str]:
+    if isinstance(node, ast.ImportFrom):
+        return ["." * node.level + (node.module or "")]
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    return []
+
+
+def imported_modules(source_file: Path) -> set[str]:
+    syntax_tree = ast.parse(source_file.read_text())
+    return {
+        module for node in ast.walk(syntax_tree) for module in modules_named_by(node)
+    }
+
+
+def is_cluster_module(module: str) -> bool:
+    return "cluster" in module.split(".")
+
+
+def test_code_that_runs_in_a_job_does_not_import_the_cluster_commands() -> None:
+    job_side_files = [
+        source_file
+        for source_file in PACKAGE_DIRECTORY.rglob("*.py")
+        if "cluster" not in source_file.relative_to(PACKAGE_DIRECTORY).parts
+    ]
+
+    assert PACKAGE_DIRECTORY / "run.py" in job_side_files
+    for source_file in job_side_files:
+        cluster_imports = list(filter(is_cluster_module, imported_modules(source_file)))
+        assert not cluster_imports, source_file
 
 
 def torch_with_devices(device_names: list[str]) -> types.ModuleType:
