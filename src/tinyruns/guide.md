@@ -1,6 +1,6 @@
 ---
 name: tinyruns
-description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, checkpoints, input runs, datasets, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
+description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, checkpoints, input runs, datasets, Weights & Biases, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
 ---
 
 # Getting started with tinyruns
@@ -175,6 +175,57 @@ A model or a dataset on the Hugging Face Hub needs no place of its own: `HF_HOME
 - **A job gets the data directory read-only.** What a run makes of a dataset goes into its own `heavy/`, and other runs read it as an [input](#8-read-another-run).
 - **A config names a dataset by its directory name,** never by a path.
 - **A run does not record its datasets.** The manifest holds the code and the config, not the content of the data directory. Put a version into the directory name of a dataset that can change.
+
+## 10. Log to Weights & Biases
+
+tinyruns takes no part in it. W&B is a dependency of the project, added with `uv add wandb`, and a call in a stage:
+
+```python
+from typing import Any
+
+import wandb
+
+from my_project.training import train_step
+from tinyruns.run_config import is_smoke_test
+from tinyruns.run_directory import RunDirectory, append_metrics, read_json
+
+
+def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
+    code = read_json(run_directory.manifest_path)["code"]
+    with wandb.init(
+        project=config["wandb"]["project"],
+        id=run_directory.path.name,
+        resume="allow",
+        dir=run_directory.path,
+        config={**config, "code": code},
+        tags=["smoke"] if is_smoke_test(config) else [],
+    ) as tracked_run:
+        for step in range(1, config["train"]["steps"] + 1):
+            metrics = {"step": step, "loss": train_step(step)}
+            append_metrics(run_directory, metrics)
+            tracked_run.log(metrics, step=step)
+```
+
+`train_step` stands for the project's own code.
+
+- **`dir` is the run directory.** In a job the working directory is the code, which is read-only. W&B's files go into `wandb/` in the run directory and come back with `tinyruns pull`.
+- **`id` is the run ID, with `resume="allow"`.** One run is then one W&B run, and `tinyruns resume` continues it. W&B ignores a step lower than the last one it holds, so the steps a run repeats after a [checkpoint](#7-continue-a-run-from-a-checkpoint) are not logged twice. A W&B ID has at most 64 characters, so keep the name of a config file under 30.
+- **The commit comes from the manifest.** The code on the cluster is a copy without `.git`, in which W&B finds no commit.
+- **A smoke run logs too.** It is the run that shows whether a job finds the API key and reaches the server. The tag tells its W&B runs from those of full runs.
+- **Keep `metrics.jsonl`.** The run directory stays the record of a run, complete without W&B.
+- **Keep the API key out of the cluster profile.** The profile's `environment` is written into `job.sbatch` in each run directory, on the cluster and on your machine. `uv run wandb login` stores the key in `~/.netrc` instead. Copy its entry into `~/.netrc` on the cluster: Apptainer mounts your home directory into a job, unless the cluster has set it up otherwise.
+- **Check that a job reaches W&B.** `uv run python -c "import wandb; print(wandb.Settings().base_url)"` prints the server's URL, which differs between W&B versions. A smoke run of this config fails if a job cannot reach it:
+
+  ```yaml
+  stages:
+    - tinyruns.stages.environment_check
+  environment_check:
+    urls:
+      - <the server's URL>
+  ```
+
+- **Without internet in a job,** set `WANDB_MODE: offline` under `environment` in the cluster profile. After `tinyruns pull <run_id>`, `uv run wandb sync artifacts/runs/<run_id>/wandb/offline-run-*` uploads the run from your machine.
+- **On your machine,** `WANDB_MODE=disabled` in front of the command of [step 4](#4-try-it-on-your-machine) keeps a trial out of W&B.
 
 ## Every command
 
