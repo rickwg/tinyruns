@@ -156,6 +156,23 @@ def test_smoke_run_of_other_code_does_not_unlock_a_full_run(
     assert tinyruns("submit", *unchecked).exit_code == 0
 
 
+def test_lock_that_takes_a_package_from_a_local_path_is_refused(
+    tinyruns: Command, repository: Path
+) -> None:
+    lock_file = repository / "uv.lock"
+    lock_file.write_text(
+        lock_file.read_text()
+        + '\n[[package]]\nname = "neighbour"\nversion = "0.1.0"\n'
+        + 'source = { editable = "../neighbour" }\n'
+    )
+
+    refused = tinyruns("submit", "configs/marker.yaml", "--smoke")
+
+    assert refused.exit_code == 1
+    assert "['neighbour'] from a path" in json.loads(refused.error)["error"]
+    assert tinyruns("ls").output == []
+
+
 def test_image_is_built_once_and_the_first_run_waits_for_it(
     tinyruns: Command, cluster: FakeCluster
 ) -> None:

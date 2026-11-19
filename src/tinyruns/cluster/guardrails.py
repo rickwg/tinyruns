@@ -9,6 +9,7 @@ from tinyruns.cluster.profile import (
     Resources,
     time_limit_hours,
 )
+from tinyruns.cluster.project import LOCK_FILE, packages_locked_to_local_paths
 from tinyruns.cluster.remote import Remote
 from tinyruns.cluster.snapshot import SNAPSHOT_PATHS, CodeSnapshot
 from tinyruns.cluster.status import (
@@ -43,6 +44,16 @@ def require_known_stages(repository: Path, config: dict[str, Any]) -> None:
                 f"Stage '{stage_name}' does not exist: {stage_file} is missing, and "
                 "tinyruns ships no stage of that name."
             )
+
+
+def require_lock_without_local_paths(repository: Path) -> None:
+    local_packages = packages_locked_to_local_paths(repository)
+    if local_packages:
+        raise ExperimentError(
+            f"{LOCK_FILE} takes {local_packages} from a path on this machine, which "
+            "the image build on the cluster cannot reach. Depend on a release or "
+            "on a git reference instead, then run `uv lock`."
+        )
 
 
 def require_committed_code(snapshot: CodeSnapshot, smoke: bool) -> None:

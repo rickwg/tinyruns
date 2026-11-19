@@ -8,6 +8,7 @@ from tinyruns.cluster.errors import ExperimentError
 from tinyruns.cluster.guardrails import (
     require_committed_code,
     require_confirmed_gpu_hours,
+    require_lock_without_local_paths,
     require_passed_smoke_run,
     require_usable_input_runs,
 )
@@ -101,6 +102,7 @@ def cluster_placement(request: SubmitRequest, plan: PlannedRun) -> ClusterPlacem
 def check_guardrails(
     request: SubmitRequest, plan: PlannedRun, placement: ClusterPlacement
 ) -> None:
+    require_lock_without_local_paths(request.repository)
     require_committed_code(plan.snapshot, plan.smoke)
     require_confirmed_gpu_hours(
         placement.resources, placement.profile, request.confirmed
