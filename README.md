@@ -45,12 +45,6 @@ uv run tinyruns check           # queues a job that reports what the cluster pro
 
 `uv run tinyruns guide` prints the rest: every command, the run directory, and how to write a stage and a config.
 
-The guide is also a [Claude Code skill](src/tinyruns/skill/SKILL.md). From a checkout of this repository, link it with:
-
-```bash
-ln -s "$PWD/src/tinyruns/skill" ~/.claude/skills/tinyruns
-```
-
 ## Status
 
 Early. An earlier form of this code ran on one Slurm cluster. This version is tested against a simulated cluster only, and its interface may change before `v0.1.0`.

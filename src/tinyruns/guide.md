@@ -1,8 +1,3 @@
----
-name: tinyruns
-description: Create, submit, watch, fetch and rerun experiment runs with the `tinyruns` command, on a Slurm cluster inside an Apptainer image or on this machine. Use in a project that depends on the `tinyruns` package, to run an experiment, to write a stage or an experiment config, or to set up a cluster profile or an image definition.
----
-
 # tinyruns
 
 A run is one directory, `artifacts/runs/<run_id>/`. `tinyruns` creates it from a config, executes it as a Slurm job inside the project's Apptainer image, and copies it back. The same directory runs unchanged on this machine.
