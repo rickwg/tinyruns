@@ -18,15 +18,16 @@ from tinyruns.cluster.main import main
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TESTS_DIRECTORY = Path(__file__).resolve().parent
 FAKE_CLUSTER_SCRIPT = TESTS_DIRECTORY / "fake_cluster.py"
+FIXTURE_PROJECT = TESTS_DIRECTORY / "fixture_project"
 FAKE_COMMANDS = ("sbatch", "squeue", "sacct", "scancel", "apptainer")
-SNAPSHOT_SOURCES = ("src", "pyproject.toml", "uv.lock", "apptainer")
-STAGES_DIRECTORY = Path("src") / "tinyruns" / "stages"
+STAGES_PACKAGE = "fixture_project.stages"
+STAGES_DIRECTORY = Path("src") / "fixture_project" / "stages"
 RUNS_DIRECTORY = Path("artifacts") / "runs"
 RUN_COMMAND_PREFIX = "uv run python -m tinyruns.run "
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 PROXY_VARIABLES = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
 MARKER_CONFIG = {
-    "stages": ["marker"],
+    "stages": [f"{STAGES_PACKAGE}.marker"],
     "resources": "cpu-small",
     "marker": {"text": "marker report"},
 }
@@ -60,17 +61,6 @@ def git(repository: Path, *arguments: str) -> str:
 def commit_all(repository: Path, message: str) -> None:
     git(repository, "add", "--all")
     git(repository, "commit", "--message", message)
-
-
-def copy_project_source(source: str, repository: Path) -> None:
-    if (PROJECT_ROOT / source).is_dir():
-        shutil.copytree(
-            PROJECT_ROOT / source,
-            repository / source,
-            ignore=shutil.ignore_patterns("__pycache__"),
-        )
-    else:
-        shutil.copy(PROJECT_ROOT / source, repository / source)
 
 
 def write_config(repository: Path, name: str, config: dict[str, Any]) -> Path:
@@ -107,10 +97,9 @@ def run_locally(repository: Path, run_with: str) -> None:
 @pytest.fixture
 def repository(tmp_path: Path) -> Path:
     repository = tmp_path / "repository"
-    repository.mkdir()
-    for source in SNAPSHOT_SOURCES:
-        copy_project_source(source, repository)
-    shutil.copy(TESTS_DIRECTORY / "stages" / "marker.py", repository / STAGES_DIRECTORY)
+    shutil.copytree(
+        FIXTURE_PROJECT, repository, ignore=shutil.ignore_patterns("__pycache__")
+    )
     (repository / ".gitignore").write_text("__pycache__/\nartifacts/\n")
     write_config(repository, "marker", MARKER_CONFIG)
     git(repository, "init", "--quiet")

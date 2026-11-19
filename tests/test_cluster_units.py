@@ -289,7 +289,7 @@ def test_clean_repository_has_a_clean_snapshot(repository: Path) -> None:
     assert not snapshot.is_dirty
     assert snapshot.commit == git(repository, "rev-parse", "HEAD")
     snapshot_files = git(repository, "ls-tree", "-r", "--name-only", snapshot.tree)
-    assert "src/tinyruns/run.py" in snapshot_files
+    assert "src/fixture_project/stages/marker.py" in snapshot_files
     assert "configs/marker.yaml" not in snapshot_files
 
 
@@ -310,7 +310,7 @@ def test_snapshot_holds_uncommitted_and_untracked_code(repository: Path) -> None
     assert "untracked.py" in snapshot_files
     assert "ignored.pyc" not in snapshot_files
     assert git(repository, "status", "--porcelain") == (
-        "?? src/tinyruns/stages/untracked.py"
+        "?? src/fixture_project/stages/untracked.py"
     )
 
 

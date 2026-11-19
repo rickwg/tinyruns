@@ -9,12 +9,13 @@ from typing import Any
 import pytest
 import yaml
 
-from tinyruns.run import run_stages
+from tinyruns.run import run_stages, selected_stage_names
 from tinyruns.run_config import RunConfigError, validate_run_config
 from tinyruns.run_directory import RunDirectory, read_status
 from tinyruns.stages.environment_check import url_response
 
 CLOSED_PORT_URL = "http://127.0.0.1:1"
+ENVIRONMENT_CHECK_STAGE = "tinyruns.stages.environment_check"
 
 
 def run_directory_with(tmp_path: Path, config: dict[str, Any]) -> RunDirectory:
@@ -26,7 +27,7 @@ def run_directory_with(tmp_path: Path, config: dict[str, Any]) -> RunDirectory:
 
 def environment_check_config(urls: list[str]) -> dict[str, Any]:
     return {
-        "stages": ["environment_check"],
+        "stages": [ENVIRONMENT_CHECK_STAGE],
         "environment_check": {"urls": urls, "timeout_seconds": 5},
     }
 
@@ -59,7 +60,15 @@ def test_config_must_not_name_a_location(
 
 
 @pytest.mark.parametrize(
-    "config", [{}, {"stages": []}, {"stages": ["not a module"]}, ["stages"]]
+    "config",
+    [
+        {},
+        {"stages": []},
+        {"stages": ["not a module"]},
+        {"stages": ["package..module"]},
+        {"stages": ["package.module."]},
+        ["stages"],
+    ],
 )
 def test_config_needs_stages(config: Any) -> None:
     with pytest.raises(RunConfigError):
@@ -80,7 +89,7 @@ def test_finished_run_records_done_and_its_outputs(tmp_path: Path) -> None:
 
     status = read_status(run_directory)
     assert status["state"] == "done"
-    assert status["stages"] == ["environment_check"]
+    assert status["stages"] == [ENVIRONMENT_CHECK_STAGE]
     assert "Result: passed" in run_directory.report_path.read_text()
     recorded = json.loads(run_directory.metrics_path.read_text())
     assert recorded["smoke_test"] is False
@@ -106,9 +115,25 @@ def test_only_a_configured_stage_can_be_selected(tmp_path: Path) -> None:
 
     with pytest.raises(RunConfigError, match="other_stage"):
         run_stages(run_directory, only_stage="other_stage")
-    run_stages(run_directory, only_stage="environment_check")
+    run_stages(run_directory, only_stage=ENVIRONMENT_CHECK_STAGE)
 
     assert read_status(run_directory)["state"] == "done"
+
+
+def test_stage_is_selected_by_the_last_part_of_its_module_path(tmp_path: Path) -> None:
+    run_directory = run_directory_with(tmp_path, environment_check_config(urls=[]))
+
+    run_stages(run_directory, only_stage="environment_check")
+
+    assert read_status(run_directory)["stages"] == [ENVIRONMENT_CHECK_STAGE]
+
+
+def test_last_part_shared_by_two_stages_selects_neither() -> None:
+    config = {"stages": ["training.run", "evaluation.run"]}
+
+    with pytest.raises(RunConfigError, match="names 2 of this run's stages"):
+        selected_stage_names(config, only_stage="run")
+    assert selected_stage_names(config, only_stage="training.run") == ["training.run"]
 
 
 def test_url_response_tells_reachable_from_unreachable(

@@ -152,7 +152,7 @@ def test_environment_check_reports_its_input_runs(
         repository,
         "environment",
         {
-            "stages": ["environment_check"],
+            "stages": ["tinyruns.stages.environment_check"],
             "resources": "cpu-small",
             "environment_check": {"urls": []},
         },

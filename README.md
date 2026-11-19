@@ -27,8 +27,8 @@ uv run tinyruns pull <run_id>
 
 ## Status
 
-Early, and not yet usable from another project. The code was written inside one research project and is being generalised:
+Early. The code was written inside one research project and is being generalised:
 
-- Stage modules are still looked up inside this package (`tinyruns.stages`), not in the project that uses it.
+- There is no release yet that a project could depend on.
 - The environment-check stage needs PyTorch, which is only a development dependency here.
 - There are no commands yet to create a cluster profile or an image definition from a template.

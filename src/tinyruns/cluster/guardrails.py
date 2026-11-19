@@ -1,3 +1,4 @@
+import importlib.util
 from pathlib import Path
 from shlex import quote
 from typing import Any
@@ -18,15 +19,29 @@ from tinyruns.cluster.status import (
 from tinyruns.run_config import stage_names
 from tinyruns.run_directory import DONE, RunDirectory, read_json
 
-STAGES_DIRECTORY = Path("src") / "tinyruns" / "stages"
+PROJECT_SOURCE = Path("src")
+PACKAGED_STAGES = "tinyruns.stages"
+
+
+def project_stage_file(repository: Path, stage_name: str) -> Path:
+    module_file = Path(*stage_name.split(".")).with_suffix(".py")
+    return repository / PROJECT_SOURCE / module_file
+
+
+def is_packaged_stage(stage_name: str) -> bool:
+    package = stage_name.rpartition(".")[0]
+    return (
+        package == PACKAGED_STAGES and importlib.util.find_spec(stage_name) is not None
+    )
 
 
 def require_known_stages(repository: Path, config: dict[str, Any]) -> None:
     for stage_name in stage_names(config):
-        stage_file = repository / STAGES_DIRECTORY / f"{stage_name}.py"
-        if not stage_file.is_file():
+        stage_file = project_stage_file(repository, stage_name)
+        if not stage_file.is_file() and not is_packaged_stage(stage_name):
             raise ExperimentError(
-                f"Stage '{stage_name}' does not exist: {stage_file} is missing."
+                f"Stage '{stage_name}' does not exist: {stage_file} is missing, and "
+                "tinyruns ships no stage of that name."
             )
 
 

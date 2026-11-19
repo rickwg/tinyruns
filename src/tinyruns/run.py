@@ -24,19 +24,31 @@ Stage = Callable[[RunDirectory, dict[str, Any]], None]
 
 
 def stage_function(stage_name: str) -> Stage:
-    module = importlib.import_module(f"tinyruns.stages.{stage_name}")
-    return module.run_stage
+    return importlib.import_module(stage_name).run_stage
+
+
+def last_part(stage_name: str) -> str:
+    return stage_name.rpartition(".")[2]
 
 
 def selected_stage_names(config: dict[str, Any], only_stage: str | None) -> list[str]:
     configured_stages = stage_names(config)
     if only_stage is None:
         return configured_stages
-    if only_stage not in configured_stages:
+    if only_stage in configured_stages:
+        return [only_stage]
+    abbreviated_stages = [
+        stage_name
+        for stage_name in dict.fromkeys(configured_stages)
+        if last_part(stage_name) == only_stage
+    ]
+    if len(abbreviated_stages) != 1:
         raise RunConfigError(
-            f"Stage '{only_stage}' is not in this run's stages: {configured_stages}."
+            f"Stage '{only_stage}' names {len(abbreviated_stages)} of this run's "
+            f"stages: {configured_stages}. Give a stage's module path, or its last "
+            "part when no other stage ends the same."
         )
-    return [only_stage]
+    return abbreviated_stages
 
 
 def running_status(stages: list[str]) -> dict[str, Any]:

@@ -48,17 +48,21 @@ def stage_names(config: dict[str, Any]) -> list[str]:
     if (
         not isinstance(stages, list)
         or not stages
-        or not all(map(is_module_name, stages))
+        or not all(map(is_module_path, stages))
     ):
         raise RunConfigError(
-            "The config needs `stages`: a non-empty list of module names found "
-            "under tinyruns.stages."
+            "The config needs `stages`: a non-empty list of module paths, for "
+            "example `my_project.stages.train`."
         )
     return stages
 
 
 def is_module_name(value: Any) -> bool:
     return isinstance(value, str) and value.isidentifier()
+
+
+def is_module_path(value: Any) -> bool:
+    return isinstance(value, str) and all(map(is_module_name, value.split(".")))
 
 
 def input_run_ids(config: dict[str, Any]) -> dict[str, str]:

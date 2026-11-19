@@ -4,7 +4,14 @@ from pathlib import Path
 import pytest
 import yaml
 
-from conftest import MARKER_CONFIG, Command, FakeCluster, run_locally, write_config
+from conftest import (
+    MARKER_CONFIG,
+    STAGES_PACKAGE,
+    Command,
+    FakeCluster,
+    run_locally,
+    write_config,
+)
 
 
 def test_new_run_is_created_and_run_without_the_cluster(
@@ -32,7 +39,7 @@ def test_new_run_is_created_and_run_without_the_cluster(
 
 
 def test_new_run_records_uncommitted_code(tinyruns: Command, repository: Path) -> None:
-    (repository / "src" / "tinyruns" / "draft.py").write_text("DRAFT = 1\n")
+    (repository / "src" / "fixture_project" / "draft.py").write_text("DRAFT = 1\n")
 
     created = tinyruns("new", "configs/marker.yaml").output
 
@@ -77,9 +84,13 @@ def test_new_rejects_configs_that_cannot_run(
     tinyruns: Command, repository: Path
 ) -> None:
     write_config(repository, "located", {**MARKER_CONFIG, "output": "/tmp/results"})
-    write_config(repository, "no_stage", {**MARKER_CONFIG, "stages": ["missing"]})
+    write_config(
+        repository,
+        "no_stage",
+        {**MARKER_CONFIG, "stages": [f"{STAGES_PACKAGE}.absent"]},
+    )
 
     assert "does not exist" in tinyruns("new", "configs/absent.yaml").error
     assert "output=/tmp/results" in tinyruns("new", "configs/located.yaml").error
-    assert "missing" in tinyruns("new", "configs/no_stage.yaml").error
+    assert "absent.py is missing" in tinyruns("new", "configs/no_stage.yaml").error
     assert tinyruns("ls").output == []

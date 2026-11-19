@@ -11,6 +11,7 @@ from conftest import (
     MARKER_CONFIG,
     RUNS_DIRECTORY,
     STAGES_DIRECTORY,
+    STAGES_PACKAGE,
     Command,
     FakeCluster,
     commit_all,
@@ -34,7 +35,9 @@ def test_smoke_run_of_uncommitted_code_runs_and_is_pulled(
         (repository / STAGES_DIRECTORY / "marker.py").read_text()
     )
     write_config(
-        repository, "uncommitted", {**MARKER_CONFIG, "stages": ["uncommitted"]}
+        repository,
+        "uncommitted",
+        {**MARKER_CONFIG, "stages": [f"{STAGES_PACKAGE}.uncommitted"]},
     )
 
     submission = tinyruns("submit", "configs/uncommitted.yaml", "--smoke")
@@ -291,10 +294,20 @@ def test_config_naming_a_location_is_rejected(
 def test_unknown_stage_resources_and_run_are_rejected(
     tinyruns: Command, repository: Path
 ) -> None:
-    write_config(repository, "no_stage", {**MARKER_CONFIG, "stages": ["missing"]})
+    write_config(
+        repository,
+        "no_stage",
+        {**MARKER_CONFIG, "stages": [f"{STAGES_PACKAGE}.absent"]},
+    )
+    write_config(
+        repository,
+        "no_packaged_stage",
+        {**MARKER_CONFIG, "stages": ["tinyruns.stages.absent"]},
+    )
     write_config(repository, "no_resources", {**MARKER_CONFIG, "resources": "huge"})
 
-    assert "missing" in tinyruns("submit", "configs/no_stage.yaml", "--smoke").error
+    for config in ("configs/no_stage.yaml", "configs/no_packaged_stage.yaml"):
+        assert "absent.py is missing" in tinyruns("submit", config, "--smoke").error
     assert (
         "cpu-small" in tinyruns("submit", "configs/no_resources.yaml", "--smoke").error
     )
@@ -309,7 +322,7 @@ def test_environment_check_runs_as_a_cluster_job(
         repository,
         "environment",
         {
-            "stages": ["environment_check"],
+            "stages": ["tinyruns.stages.environment_check"],
             "resources": "cpu-small",
             "environment_check": {"urls": []},
         },
