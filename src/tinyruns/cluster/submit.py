@@ -25,6 +25,7 @@ from tinyruns.cluster.profile import (
     Resources,
     load_cluster_profile,
 )
+from tinyruns.cluster.project import project_name
 from tinyruns.cluster.remote import Remote
 from tinyruns.cluster.slurm import submit_job
 from tinyruns.cluster.snapshot import upload_code_snapshot
@@ -74,7 +75,9 @@ def selected_resources(
 
 
 def cluster_placement(request: SubmitRequest, plan: PlannedRun) -> ClusterPlacement:
-    profile = load_cluster_profile(request.cluster_profile_path)
+    profile = load_cluster_profile(
+        request.cluster_profile_path, project_name(request.repository)
+    )
     return ClusterPlacement(
         profile=profile,
         resources=selected_resources(plan.config, profile, plan.smoke),

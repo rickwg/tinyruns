@@ -11,12 +11,12 @@ from tinyruns.cluster.job_script import (
     image_build_script,
 )
 from tinyruns.cluster.profile import ClusterProfile
+from tinyruns.cluster.project import PROJECT_FILE
 from tinyruns.cluster.remote import Remote
 from tinyruns.cluster.slurm import submit_job
 
 IMAGE_DEFINITION = Path("apptainer") / IMAGE_DEFINITION_NAME
 LOCK_FILE = Path("uv.lock")
-PROJECT_FILE = Path("pyproject.toml")
 BUILD_SCRIPT_NAME = "build.sbatch"
 
 

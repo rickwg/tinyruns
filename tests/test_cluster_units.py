@@ -7,7 +7,13 @@ from typing import Any
 import pytest
 import yaml
 
-from conftest import PROJECT_ROOT, STAGES_DIRECTORY, commit_all, git
+from conftest import (
+    FIXTURE_PROJECT_NAME,
+    PROJECT_ROOT,
+    STAGES_DIRECTORY,
+    commit_all,
+    git,
+)
 from tinyruns.cluster.errors import ExperimentError
 from tinyruns.cluster.job_script import (
     ImageBuildJob,
@@ -21,6 +27,7 @@ from tinyruns.cluster.profile import (
     load_cluster_profile,
     time_limit_hours,
 )
+from tinyruns.cluster.project import project_name
 from tinyruns.cluster.remote import Remote, RemoteCommandError
 from tinyruns.cluster.slurm import parsed_job_id
 from tinyruns.cluster.snapshot import take_code_snapshot
@@ -43,6 +50,7 @@ CPU_RESOURCES = Resources(
 
 def profile(node_local_scratch: str | None = "/scratch/local") -> ClusterProfile:
     return ClusterProfile(
+        name="example-cluster",
         ssh_host="cluster",
         code_root="/home/someone/project/code",
         scratch_root="/scratch/someone/project",
@@ -51,6 +59,7 @@ def profile(node_local_scratch: str | None = "/scratch/local") -> ClusterProfile
         gpu_hours_without_confirmation=24,
         image_build=CPU_RESOURCES,
         resources={"cpu": CPU_RESOURCES, "gpu": GPU_RESOURCES},
+        smoke_resources="cpu",
     )
 
 
@@ -81,6 +90,10 @@ def write_profile(tmp_path: Path, **changes: Any) -> Path:
     profile_path = tmp_path / "profile.yaml"
     profile_path.write_text(yaml.safe_dump({**content, "ssh_host": None, **changes}))
     return profile_path
+
+
+def loaded_profile(tmp_path: Path, **changes: Any) -> ClusterProfile:
+    return load_cluster_profile(write_profile(tmp_path, **changes), "example-project")
 
 
 def test_full_gpu_job_script_reserves_a_gpu_and_stays_offline() -> None:
@@ -163,34 +176,68 @@ def test_time_limit_must_be_complete() -> None:
         time_limit_hours("90")
 
 
-def test_profile_template_loads_with_the_login_name_filled_in(tmp_path: Path) -> None:
-    template = load_cluster_profile(write_profile(tmp_path))
+def test_profile_template_loads_with_login_and_project_name_filled_in(
+    tmp_path: Path,
+) -> None:
+    template = loaded_profile(tmp_path)
 
     user = getpass.getuser()
-    assert template.code_root == f"/home/{user}/experiments/code"
-    assert template.runs_root == f"/scratch/{user}/experiments/runs"
+    assert template.name == "my-cluster"
+    assert template.code_root == f"/home/{user}/example-project/code"
+    assert template.runs_root == f"/scratch/{user}/example-project/runs"
     assert template.environment["https_proxy"] == "http://proxy.example.org:3128"
     assert all(resources.time for resources in template.resources.values())
+    assert template.smoke_resources in template.resources
 
 
 def test_profile_reads_the_login_name_from_the_ssh_configuration(
     tmp_path: Path,
 ) -> None:
-    profile_path = write_profile(tmp_path, ssh_host="host-without-ssh-config.invalid")
+    template = loaded_profile(tmp_path, ssh_host="host-without-ssh-config.invalid")
 
-    assert getpass.getuser() in load_cluster_profile(profile_path).code_root
+    assert getpass.getuser() in template.code_root
 
 
 def test_profile_resources_need_a_time_limit(tmp_path: Path) -> None:
     untimed = {"untimed": {"partition": "small", "cpus": 1, "memory": "1G"}}
 
     with pytest.raises(ExperimentError, match="`time` limit"):
-        load_cluster_profile(write_profile(tmp_path, resources=untimed))
+        loaded_profile(tmp_path, resources=untimed)
 
 
 def test_profile_paths_must_be_plain_absolute_paths(tmp_path: Path) -> None:
     with pytest.raises(ExperimentError, match="must be absolute"):
-        load_cluster_profile(write_profile(tmp_path, code_root="code; rm -rf $HOME"))
+        loaded_profile(tmp_path, code_root="code; rm -rf $HOME")
+
+
+def test_profile_paths_know_only_the_user_and_project_placeholders(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ExperimentError, match=r"only the placeholders \{user\} and"):
+        loaded_profile(tmp_path, scratch_root="/scratch/{group}/{project}")
+
+
+def test_profile_smoke_resources_must_be_one_of_its_resources(tmp_path: Path) -> None:
+    with pytest.raises(ExperimentError, match="'gpu-8'.*cpu-small"):
+        loaded_profile(tmp_path, smoke_resources="gpu-8")
+    assert loaded_profile(tmp_path, smoke_resources=None).smoke_resources is None
+
+
+def test_profile_names_the_settings_it_lacks(tmp_path: Path) -> None:
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text("ssh_host: my-cluster\nresources: {}\n")
+
+    with pytest.raises(ExperimentError, match="name.*code_root.*image_build"):
+        load_cluster_profile(profile_path, "example-project")
+
+
+def test_project_name_is_read_from_the_project_file(repository: Path) -> None:
+    assert project_name(repository) == FIXTURE_PROJECT_NAME
+
+    (repository / "pyproject.toml").write_text("[tool.black]\n")
+
+    with pytest.raises(ExperimentError, match=r"`name` under `\[project\]`"):
+        project_name(repository)
 
 
 def test_ssh_command_runs_in_a_login_shell_without_prompting() -> None:

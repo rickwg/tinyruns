@@ -20,6 +20,7 @@ TESTS_DIRECTORY = Path(__file__).resolve().parent
 FAKE_CLUSTER_SCRIPT = TESTS_DIRECTORY / "fake_cluster.py"
 FIXTURE_PROJECT = TESTS_DIRECTORY / "fixture_project"
 FAKE_COMMANDS = ("sbatch", "squeue", "sacct", "scancel", "apptainer")
+FIXTURE_PROJECT_NAME = "fixture-project"
 STAGES_PACKAGE = "fixture_project.stages"
 STAGES_DIRECTORY = Path("src") / "fixture_project" / "stages"
 RUNS_DIRECTORY = Path("artifacts") / "runs"
@@ -115,7 +116,7 @@ class FakeCluster:
 
     @property
     def scratch_root(self) -> Path:
-        return self.root / "scratch"
+        return self.root / "scratch" / FIXTURE_PROJECT_NAME
 
     @property
     def code_root(self) -> Path:
@@ -141,9 +142,10 @@ class FakeCluster:
 
 def fake_cluster_profile(root: Path) -> dict[str, Any]:
     return {
+        "name": "fake-cluster",
         "ssh_host": None,
         "code_root": str(root / "home" / "code"),
-        "scratch_root": str(root / "scratch"),
+        "scratch_root": str(root / "scratch" / "{project}"),
         "node_local_scratch": str(root / "local"),
         "gpu_hours_without_confirmation": 2,
         "environment": {"FAKE_PROXY": "http://proxy.invalid:3128"},
@@ -153,6 +155,7 @@ def fake_cluster_profile(root: Path) -> dict[str, Any]:
             "cpus": 2,
             "memory": "4G",
         },
+        "smoke_resources": "cpu-small",
         "resources": {
             "cpu-small": {
                 "partition": "small",

@@ -1,6 +1,7 @@
+name: my-cluster
 ssh_host: my-cluster
-code_root: /home/{user}/experiments/code
-scratch_root: /scratch/{user}/experiments
+code_root: /home/{user}/{project}/code
+scratch_root: /scratch/{user}/{project}
 node_local_scratch: /tmp
 gpu_hours_without_confirmation: 24
 
@@ -18,6 +19,7 @@ image_build:
   cpus: 8
   memory: 16G
 
+smoke_resources: cpu-small
 resources:
   cpu-small:
     partition: cpu
