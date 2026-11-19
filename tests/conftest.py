@@ -129,6 +129,9 @@ class FakeCluster:
     def hold_new_jobs(self) -> None:
         (self.state_directory / "hold").touch()
 
+    def keep_cancelled_jobs_completing(self, polls: int) -> None:
+        (self.state_directory / "completing_polls").write_text(str(polls))
+
     def release(self, job_id: str) -> None:
         subprocess.run(
             [sys.executable, str(FAKE_CLUSTER_SCRIPT), "release", job_id], check=True

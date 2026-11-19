@@ -21,6 +21,8 @@ from tinyruns.run_directory import (
 )
 
 MAX_CONSECUTIVE_FAILED_POLLS = 5
+CANCEL_POLL_SECONDS = 2.0
+CANCEL_TIMEOUT_SECONDS = 120.0
 
 
 def run_summary(run_directory: RunDirectory) -> dict[str, Any]:
@@ -87,4 +89,11 @@ def cancel_run(run_directory: RunDirectory) -> dict[str, Any]:
             "This run never reached Slurm; there is no job to cancel."
         )
     cancel_job(remote_of(manifest), job_id)
-    return refresh_status(run_directory)
+    status = wait_for_run(run_directory, CANCEL_POLL_SECONDS, CANCEL_TIMEOUT_SECONDS)
+    if status["state"] not in TERMINAL_STATES:
+        raise ExperimentError(
+            f"Slurm was asked to cancel job {job_id} and has not ended it within "
+            f"{CANCEL_TIMEOUT_SECONDS:g} seconds. `tinyruns status "
+            f"{manifest['run_id']}` shows when it has."
+        )
+    return status

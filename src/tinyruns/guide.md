@@ -94,7 +94,7 @@ uv run tinyruns pull <run_id>
 - **`tinyruns status <run_id>`** asks the cluster for the run's state. Without a run ID it reports every unfinished run. A failed run's status holds the reason and the end of its log.
 - **`tinyruns logs <run_id>`** shows the end of the Slurm log, `--lines <n>` of it.
 - **`tinyruns ls`** lists the runs known on your machine, without asking the cluster.
-- **`tinyruns cancel <run_id>`** cancels the job. The run is then failed.
+- **`tinyruns cancel <run_id>`** cancels the job and returns when Slurm has ended it. The run is then failed.
 - **`tinyruns resume <run_id>`** queues a failed run again, in its directory, with the same code and config.
 
 ## 7. Read another run
@@ -121,7 +121,7 @@ A run reads the outputs of a finished run through a named input, so one training
 | `tinyruns status [<run_id>]` | Asks the cluster for the state of one run, or of every unfinished run. |
 | `tinyruns logs <run_id>` | Shows the end of the run's Slurm log. |
 | `tinyruns ls` | Lists the runs known on this machine. |
-| `tinyruns cancel <run_id>` | Cancels the run's Slurm job. |
+| `tinyruns cancel <run_id>` | Cancels the run's Slurm job and waits until it has ended. |
 | `tinyruns resume <run_id>` | Queues a failed run again, in its directory. |
 | `tinyruns guide` | Prints this guide. |
 | `python -m tinyruns.run <run_directory>` | Runs the stages of a run directory, on this machine or in the job. |

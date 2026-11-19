@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from conftest import (
@@ -20,6 +21,7 @@ from conftest import (
     metrics,
     write_config,
 )
+from tinyruns.cluster import operations
 
 
 def submitted_smoke_run(tinyruns: Command, config: str = "configs/marker.yaml") -> str:
@@ -280,6 +282,43 @@ def test_cancelled_run_is_reported_failed(
     assert cancelled["state"] == "failed"
     assert cancelled["slurm_state"] == "CANCELLED"
     assert tinyruns("ls").output[0]["state"] == "failed"
+
+
+def test_cancel_returns_once_slurm_has_ended_the_job(
+    tinyruns: Command, cluster: FakeCluster, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(operations, "CANCEL_POLL_SECONDS", 0)
+    cluster.hold_new_jobs()
+    cluster.keep_cancelled_jobs_completing(polls=2)
+    run_id = tinyruns("submit", "configs/marker.yaml", "--smoke").output["run_id"]
+
+    cancelled = tinyruns("cancel", run_id).output
+
+    assert cancelled["state"] == "failed"
+    assert cancelled["slurm_state"] == "CANCELLED"
+    assert "as CANCELLED" in cancelled["failure"]
+
+
+def test_cancel_says_so_when_slurm_does_not_end_the_job_in_time(
+    tinyruns: Command, cluster: FakeCluster, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(operations, "CANCEL_POLL_SECONDS", 0)
+    monkeypatch.setattr(operations, "CANCEL_TIMEOUT_SECONDS", 0)
+    cluster.hold_new_jobs()
+    cluster.keep_cancelled_jobs_completing(polls=100)
+    submission = tinyruns("submit", "configs/marker.yaml", "--smoke").output
+
+    cancelled = tinyruns("cancel", submission["run_id"])
+
+    assert cancelled.exit_code == 1
+    job_id = submission["slurm"]["job_ids"][0]
+    assert "has not ended it" in json.loads(cancelled.error)["error"]
+    assert f"cancel job {job_id}" in json.loads(cancelled.error)["error"]
+    still_ending = tinyruns("status", submission["run_id"]).output
+    assert (still_ending["state"], still_ending["slurm_state"]) == (
+        "running",
+        "COMPLETING",
+    )
 
 
 def test_job_that_slurm_forgot_is_reported_failed(

@@ -91,12 +91,24 @@ def job_id_argument(arguments: list[str]) -> str:
     return arguments[arguments.index("-j") + 1]
 
 
+def state_after_one_more_poll(job_id: str) -> str:
+    job = load_job(job_id)
+    if job["state"] != "COMPLETING":
+        return job["state"]
+    if job["completing_polls"] == 0:
+        set_job_state(job_id, "CANCELLED")
+        return "CANCELLED"
+    save_job(job_id, {**job, "completing_polls": job["completing_polls"] - 1})
+    return "COMPLETING"
+
+
 def squeue(arguments: list[str]) -> int:
-    state = job_state(job_id_argument(arguments))
-    if state is None:
+    job_id = job_id_argument(arguments)
+    if job_state(job_id) is None:
         print("slurm_load_jobs error: Invalid job id specified", file=sys.stderr)
         return 1
-    if state in ACTIVE_STATES:
+    state = state_after_one_more_poll(job_id)
+    if state in (*ACTIVE_STATES, "COMPLETING"):
         print(state)
     return 0
 
@@ -110,9 +122,27 @@ def sacct(arguments: list[str]) -> int:
     return 0
 
 
+def completing_polls_of_cancelled_jobs() -> int:
+    setting = state_directory() / "completing_polls"
+    return int(setting.read_text()) if setting.is_file() else 0
+
+
 def scancel(arguments: list[str]) -> int:
-    if job_state(arguments[0]) in ACTIVE_STATES:
-        set_job_state(arguments[0], "CANCELLED")
+    job_id = arguments[0]
+    completing_polls = completing_polls_of_cancelled_jobs()
+    if job_state(job_id) not in ACTIVE_STATES:
+        return 0
+    if completing_polls == 0:
+        set_job_state(job_id, "CANCELLED")
+    else:
+        save_job(
+            job_id,
+            {
+                **load_job(job_id),
+                "state": "COMPLETING",
+                "completing_polls": completing_polls,
+            },
+        )
     return 0
 
 
