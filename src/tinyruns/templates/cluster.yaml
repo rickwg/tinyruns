@@ -1,0 +1,32 @@
+ssh_host: my-cluster
+code_root: /home/{user}/experiments/code
+scratch_root: /scratch/{user}/experiments
+node_local_scratch: /tmp
+gpu_hours_without_confirmation: 24
+
+environment:
+  http_proxy: http://proxy.example.org:3128
+  https_proxy: http://proxy.example.org:3128
+  HTTP_PROXY: http://proxy.example.org:3128
+  HTTPS_PROXY: http://proxy.example.org:3128
+  no_proxy: localhost,127.0.0.1
+  NO_PROXY: localhost,127.0.0.1
+
+image_build:
+  partition: cpu
+  time: "01:00:00"
+  cpus: 8
+  memory: 16G
+
+resources:
+  cpu-small:
+    partition: cpu
+    time: "01:00:00"
+    cpus: 4
+    memory: 8G
+  gpu-1:
+    partition: gpu
+    time: "04:00:00"
+    cpus: 8
+    memory: 48G
+    gpus: 1
