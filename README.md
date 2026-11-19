@@ -31,3 +31,7 @@ Early. The code was written inside one research project and is being generalised
 
 - There is no release yet that a project could depend on.
 - There are no commands yet to create a cluster profile or an image definition from a template.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).
