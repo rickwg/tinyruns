@@ -9,7 +9,7 @@ from conftest import (
     MARKER_CONFIG,
     RUN_COMMAND_PREFIX,
     RUNS_DIRECTORY,
-    Exp,
+    Command,
     FakeCluster,
     local_run,
     metrics,
@@ -33,32 +33,32 @@ def evaluation_config(repository: Path) -> str:
     return "configs/evaluation.yaml"
 
 
-def finished_cluster_run(exp: Exp, *submit_arguments: str) -> str:
-    submission = exp("submit", *submit_arguments)
+def finished_cluster_run(tinyruns: Command, *submit_arguments: str) -> str:
+    submission = tinyruns("submit", *submit_arguments)
     assert submission.exit_code == 0, submission.error
     run_id = submission.output["run_id"]
-    assert exp("wait", run_id, "--interval", "0").output["state"] == "done"
+    assert tinyruns("wait", run_id, "--interval", "0").output["state"] == "done"
     return run_id
 
 
-def refusal(exp: Exp, *arguments: str) -> str:
-    refused = exp(*arguments)
+def refusal(tinyruns: Command, *arguments: str) -> str:
+    refused = tinyruns(*arguments)
     assert refused.exit_code == 1
     return json.loads(refused.error)["error"]
 
 
 def test_several_runs_read_one_finished_run_on_the_cluster(
-    exp: Exp, repository: Path, cluster: FakeCluster, evaluation_config: str
+    tinyruns: Command, repository: Path, cluster: FakeCluster, evaluation_config: str
 ) -> None:
-    training = finished_cluster_run(exp, "configs/marker.yaml", "--smoke")
+    training = finished_cluster_run(tinyruns, "configs/marker.yaml", "--smoke")
     write_config(
         repository, "pinned", {**EVALUATION_CONFIG, "inputs": {"training": training}}
     )
 
     named_on_command_line = finished_cluster_run(
-        exp, evaluation_config, "--smoke", "--input", f"training={training}"
+        tinyruns, evaluation_config, "--smoke", "--input", f"training={training}"
     )
-    named_in_config = finished_cluster_run(exp, "configs/pinned.yaml", "--smoke")
+    named_in_config = finished_cluster_run(tinyruns, "configs/pinned.yaml", "--smoke")
 
     for evaluation in (named_on_command_line, named_in_config):
         recorded = metrics(cluster.run_directory(evaluation))[-1]
@@ -73,14 +73,14 @@ def test_several_runs_read_one_finished_run_on_the_cluster(
 
 
 def test_pulled_run_reads_its_pulled_input_run_locally(
-    exp: Exp, repository: Path, evaluation_config: str
+    tinyruns: Command, repository: Path, evaluation_config: str
 ) -> None:
-    training = finished_cluster_run(exp, "configs/marker.yaml", "--smoke")
+    training = finished_cluster_run(tinyruns, "configs/marker.yaml", "--smoke")
     evaluation = finished_cluster_run(
-        exp, evaluation_config, "--smoke", "--input", f"training={training}"
+        tinyruns, evaluation_config, "--smoke", "--input", f"training={training}"
     )
-    exp("pull", evaluation)
-    exp("pull", training, "--heavy")
+    tinyruns("pull", evaluation)
+    tinyruns("pull", training, "--heavy")
     evaluation_directory = local_run(repository, evaluation)
     (evaluation_directory / "metrics.jsonl").unlink()
 
@@ -90,61 +90,63 @@ def test_pulled_run_reads_its_pulled_input_run_locally(
 
 
 def test_input_run_must_be_done_on_the_cluster(
-    exp: Exp, cluster: FakeCluster, evaluation_config: str
+    tinyruns: Command, cluster: FakeCluster, evaluation_config: str
 ) -> None:
     submit_evaluation = ("submit", evaluation_config, "--smoke", "--input")
     cluster.hold_new_jobs()
-    queued_training = exp("submit", "configs/marker.yaml", "--smoke").output["run_id"]
+    queued_training = tinyruns("submit", "configs/marker.yaml", "--smoke").output[
+        "run_id"
+    ]
 
-    absent = refusal(exp, *submit_evaluation, f"training={ABSENT_RUN}")
-    unfinished = refusal(exp, *submit_evaluation, f"training={queued_training}")
+    absent = refusal(tinyruns, *submit_evaluation, f"training={ABSENT_RUN}")
+    unfinished = refusal(tinyruns, *submit_evaluation, f"training={queued_training}")
 
     assert "not on the cluster" in absent
     assert "is queued" in unfinished
-    assert [run["run_id"] for run in exp("ls").output] == [queued_training]
+    assert [run["run_id"] for run in tinyruns("ls").output] == [queued_training]
 
 
 def test_full_run_reads_only_full_runs_and_needs_its_own_smoke_run(
-    exp: Exp, evaluation_config: str
+    tinyruns: Command, evaluation_config: str
 ) -> None:
-    smoke_training = finished_cluster_run(exp, "configs/marker.yaml", "--smoke")
-    full_training = finished_cluster_run(exp, "configs/marker.yaml")
+    smoke_training = finished_cluster_run(tinyruns, "configs/marker.yaml", "--smoke")
+    full_training = finished_cluster_run(tinyruns, "configs/marker.yaml")
     reads_smoke = ("--input", f"training={smoke_training}")
     reads_full = ("--input", f"training={full_training}")
-    finished_cluster_run(exp, evaluation_config, "--smoke", *reads_smoke)
+    finished_cluster_run(tinyruns, evaluation_config, "--smoke", *reads_smoke)
 
-    smoke_input_refused = refusal(exp, "submit", evaluation_config, *reads_smoke)
-    other_input_refused = refusal(exp, "submit", evaluation_config, *reads_full)
-    finished_cluster_run(exp, evaluation_config, "--smoke", *reads_full)
-    finished_cluster_run(exp, evaluation_config, *reads_full)
+    smoke_input_refused = refusal(tinyruns, "submit", evaluation_config, *reads_smoke)
+    other_input_refused = refusal(tinyruns, "submit", evaluation_config, *reads_full)
+    finished_cluster_run(tinyruns, evaluation_config, "--smoke", *reads_full)
+    finished_cluster_run(tinyruns, evaluation_config, *reads_full)
 
     assert "a smoke run" in smoke_input_refused
     assert "No smoke run" in other_input_refused
 
 
 def test_local_run_reads_a_finished_local_run(
-    exp: Exp, repository: Path, cluster: FakeCluster, evaluation_config: str
+    tinyruns: Command, repository: Path, cluster: FakeCluster, evaluation_config: str
 ) -> None:
-    training = exp("new", "configs/marker.yaml").output
+    training = tinyruns("new", "configs/marker.yaml").output
     new_evaluation = ("new", evaluation_config, "--input")
 
     before_training_ran = refusal(
-        exp, *new_evaluation, f"training={training['run_id']}"
+        tinyruns, *new_evaluation, f"training={training['run_id']}"
     )
     run_locally(repository, training["run_with"])
-    evaluation = exp(*new_evaluation, f"training={training['run_id']}").output
+    evaluation = tinyruns(*new_evaluation, f"training={training['run_id']}").output
     run_locally(repository, evaluation["run_with"])
 
     assert "is created here" in before_training_ran
     recorded = metrics(repository / evaluation["directory"])[-1]
     assert recorded["input_report"] == "marker report"
-    absent = refusal(exp, *new_evaluation, f"training={ABSENT_RUN}")
-    assert f"uv run exp pull {ABSENT_RUN} --heavy" in absent
+    absent = refusal(tinyruns, *new_evaluation, f"training={ABSENT_RUN}")
+    assert f"uv run tinyruns pull {ABSENT_RUN} --heavy" in absent
     assert cluster.job_ids() == []
 
 
 def test_environment_check_reports_its_input_runs(
-    exp: Exp, repository: Path, cluster: FakeCluster
+    tinyruns: Command, repository: Path, cluster: FakeCluster
 ) -> None:
     write_config(
         repository,
@@ -155,10 +157,14 @@ def test_environment_check_reports_its_input_runs(
             "environment_check": {"urls": []},
         },
     )
-    previous = finished_cluster_run(exp, "configs/marker.yaml", "--smoke")
+    previous = finished_cluster_run(tinyruns, "configs/marker.yaml", "--smoke")
 
     check = finished_cluster_run(
-        exp, "configs/environment.yaml", "--smoke", "--input", f"previous={previous}"
+        tinyruns,
+        "configs/environment.yaml",
+        "--smoke",
+        "--input",
+        f"previous={previous}",
     )
 
     report = (cluster.run_directory(check) / "report.md").read_text()
@@ -186,10 +192,12 @@ def test_inputs_must_map_names_to_run_ids(inputs: Any) -> None:
     [("training", "NAME=RUN_ID"), ("training=../elsewhere", "not a path")],
 )
 def test_input_option_must_name_a_run_id(
-    exp: Exp, evaluation_config: str, assignment: str, explanation: str
+    tinyruns: Command, evaluation_config: str, assignment: str, explanation: str
 ) -> None:
-    assert explanation in refusal(exp, "new", evaluation_config, "--input", assignment)
-    assert exp("ls").output == []
+    assert explanation in refusal(
+        tinyruns, "new", evaluation_config, "--input", assignment
+    )
+    assert tinyruns("ls").output == []
 
 
 def test_stage_asking_for_an_undeclared_input_is_told_how_to_declare_it(

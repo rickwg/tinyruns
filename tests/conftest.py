@@ -218,30 +218,30 @@ def cluster(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeCluster:
 
 
 @dataclass(frozen=True)
-class ExpResult:
+class CommandResult:
     exit_code: int
     output: Any
     error: str
 
 
-Exp = Callable[..., ExpResult]
+Command = Callable[..., CommandResult]
 
 
 @pytest.fixture
-def exp(
+def tinyruns(
     repository: Path,
     cluster: FakeCluster,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-) -> Exp:
+) -> Command:
     monkeypatch.chdir(repository)
 
-    def run_exp(*arguments: str) -> ExpResult:
+    def run_command(*arguments: str) -> CommandResult:
         if arguments[0] == "submit":
             arguments = (*arguments, "--cluster", str(cluster.profile_path))
         exit_code = main(list(arguments))
         captured = capsys.readouterr()
         output = json.loads(captured.out) if captured.out.strip() else None
-        return ExpResult(exit_code=exit_code, output=output, error=captured.err)
+        return CommandResult(exit_code=exit_code, output=output, error=captured.err)
 
-    return run_exp
+    return run_command

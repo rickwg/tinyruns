@@ -12,7 +12,8 @@ class UnusableInputRunError(RuntimeError):
 def usable_input_run(runs_directory: Path, name: str, run_id: str) -> RunDirectory:
     input_run_directory = RunDirectory(runs_directory / run_id)
     fetch_hint = (
-        f"If it ran on the cluster, fetch it with: uv run exp pull {run_id} --heavy"
+        "If it ran on the cluster, fetch it with: "
+        f"uv run tinyruns pull {run_id} --heavy"
     )
     if not input_run_directory.status_path.is_file():
         raise UnusableInputRunError(

@@ -19,9 +19,9 @@ rsync -a my-cluster:project/outputs/ outputs/   # copy the results back
 With tinyruns, it is three commands on your own machine:
 
 ```bash
-uv run exp submit configs/train.yaml
-uv run exp wait <run_id>
-uv run exp pull <run_id>
+uv run tinyruns submit configs/train.yaml
+uv run tinyruns wait <run_id>
+uv run tinyruns pull <run_id>
 ```
 
 

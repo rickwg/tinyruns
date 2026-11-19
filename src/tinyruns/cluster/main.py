@@ -1,7 +1,8 @@
 """Create experiment runs, and submit, watch and fetch them on the cluster.
 
 Every command prints JSON on stdout and exits non-zero on failure, with the reason
-as JSON on stderr. A run made by `exp new` or fetched by `exp pull` runs locally with:
+as JSON on stderr. A run made by `tinyruns new` or fetched by `tinyruns pull` runs
+locally with:
 uv run python -m tinyruns.run artifacts/runs/<run_id>
 """
 
@@ -56,7 +57,8 @@ def known_run(repository: Path, run_id: str) -> RunDirectory:
     run_directory = RunDirectory(runs_root(repository) / run_id)
     if not run_directory.manifest_path.is_file():
         raise ExperimentError(
-            f"No run '{run_id}' under {runs_root(repository)}. `exp ls` lists the runs."
+            f"No run '{run_id}' under {runs_root(repository)}. "
+            "`tinyruns ls` lists the runs."
         )
     return run_directory
 
@@ -70,8 +72,8 @@ def cluster_run(repository: Path, run_id: str) -> RunDirectory:
     run_directory = known_run(repository, run_id)
     if not is_cluster_run(run_directory):
         raise ExperimentError(
-            f"Run '{run_id}' was made by `exp new` and exists only on this machine. "
-            f"Run it with: {run_command(repository, run_directory)}"
+            f"Run '{run_id}' was made by `tinyruns new` and exists only on this "
+            f"machine. Run it with: {run_command(repository, run_directory)}"
         )
     return run_directory
 
@@ -294,7 +296,7 @@ def add_list_command(commands: Any) -> None:
 
 def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="exp",
+        prog="tinyruns",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
