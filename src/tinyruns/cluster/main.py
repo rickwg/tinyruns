@@ -33,6 +33,7 @@ from tinyruns.cluster.submit import (
     resume_run,
     submit_run,
 )
+from tinyruns.cluster.templates import create_image_definition
 from tinyruns.run_config import RunConfigError
 from tinyruns.run_directory import (
     DONE,
@@ -190,6 +191,12 @@ def resume(arguments: argparse.Namespace, repository: Path) -> int:
     return 0
 
 
+def init(arguments: argparse.Namespace, repository: Path) -> int:
+    print_json(PROJECT_FILE_CREATORS[arguments.project_file](repository))
+    return 0
+
+
+PROJECT_FILE_CREATORS = {"image": create_image_definition}
 Handler = Callable[[argparse.Namespace, Path], int]
 
 
@@ -301,6 +308,18 @@ def add_list_command(commands: Any) -> None:
     parser.set_defaults(handler=list_runs)
 
 
+def add_init_command(commands: Any) -> None:
+    parser = commands.add_parser(
+        "init", help="Write a file this project needs, from a template."
+    )
+    parser.add_argument(
+        "project_file",
+        choices=sorted(PROJECT_FILE_CREATORS),
+        help="`image` writes the Apptainer definition apptainer/image.def.",
+    )
+    parser.set_defaults(handler=init)
+
+
 def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tinyruns",
@@ -308,6 +327,7 @@ def argument_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     commands = parser.add_subparsers(dest="command", required=True)
+    add_init_command(commands)
     add_new_command(commands)
     add_submit_command(commands)
     add_status_command(commands)
