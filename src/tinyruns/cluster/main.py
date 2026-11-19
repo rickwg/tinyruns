@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from tinyruns.cluster.check import environment_check_config
 from tinyruns.cluster.errors import ExperimentError
 from tinyruns.cluster.new_run import create_local_run, runs_root
 from tinyruns.cluster.operations import (
@@ -110,15 +111,34 @@ def new(arguments: argparse.Namespace, repository: Path) -> int:
     return 0
 
 
+def cluster_profile_path(arguments: argparse.Namespace, repository: Path) -> Path:
+    return arguments.cluster or repository / DEFAULT_CLUSTER_PROFILE
+
+
 def submit(arguments: argparse.Namespace, repository: Path) -> int:
     request = SubmitRequest(
         repository=repository,
         config_path=arguments.config,
-        cluster_profile_path=arguments.cluster or repository / DEFAULT_CLUSTER_PROFILE,
+        cluster_profile_path=cluster_profile_path(arguments, repository),
         resources=arguments.resources,
         smoke=arguments.smoke,
         confirmed=arguments.confirm,
         skip_smoke_check=arguments.skip_smoke_check,
+        input_run_ids=input_runs_on_command_line(arguments.input),
+    )
+    print_json(submit_run(request))
+    return 0
+
+
+def check(arguments: argparse.Namespace, repository: Path) -> int:
+    request = SubmitRequest(
+        repository=repository,
+        config_path=environment_check_config(arguments.gpu, arguments.resources),
+        cluster_profile_path=cluster_profile_path(arguments, repository),
+        resources=arguments.resources,
+        smoke=True,
+        confirmed=arguments.confirm,
+        skip_smoke_check=False,
         input_run_ids=input_runs_on_command_line(arguments.input),
     )
     print_json(submit_run(request))
@@ -216,6 +236,20 @@ def add_input_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_cluster_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="A human approved exceeding the cluster profile's GPU-hour limit.",
+    )
+    parser.add_argument(
+        "--cluster",
+        type=Path,
+        help=f"Cluster profile (YAML). Default: {DEFAULT_CLUSTER_PROFILE}.",
+    )
+    add_input_option(parser)
+
+
 def add_new_command(commands: Any) -> None:
     parser = commands.add_parser(
         "new", help="Create a run directory on this machine, without the cluster."
@@ -245,22 +279,33 @@ def add_submit_command(commands: Any) -> None:
         "run without it uses the profile's `smoke_resources`.",
     )
     parser.add_argument(
-        "--confirm",
-        action="store_true",
-        help="A human approved exceeding the cluster profile's GPU-hour limit.",
-    )
-    parser.add_argument(
         "--skip-smoke-check",
         action="store_true",
         help="Submit a full run without a passed smoke run of this code and config.",
     )
-    parser.add_argument(
-        "--cluster",
-        type=Path,
-        help=f"Cluster profile (YAML). Default: {DEFAULT_CLUSTER_PROFILE}.",
-    )
-    add_input_option(parser)
+    add_cluster_options(parser)
     parser.set_defaults(handler=submit)
+
+
+def add_check_command(commands: Any) -> None:
+    parser = commands.add_parser(
+        "check",
+        help="Queue a smoke run that reports what a job on the cluster sees and "
+        "reaches.",
+    )
+    parser.add_argument(
+        "--gpu",
+        action="store_true",
+        help="Fail unless the job sees a CUDA device. Needs --resources, and "
+        "PyTorch among the project's dependencies.",
+    )
+    parser.add_argument(
+        "--resources",
+        metavar="NAME",
+        help="Resources from the cluster profile. Default: its `smoke_resources`.",
+    )
+    add_cluster_options(parser)
+    parser.set_defaults(handler=check)
 
 
 def add_run_command(
@@ -335,6 +380,7 @@ def argument_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     add_init_command(commands)
+    add_check_command(commands)
     add_new_command(commands)
     add_submit_command(commands)
     add_status_command(commands)

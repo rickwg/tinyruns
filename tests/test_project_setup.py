@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 
 from conftest import FIXTURE_PROJECT_NAME, Command, FakeCluster
 from tinyruns.cluster.profile import load_cluster_profile
@@ -104,3 +106,39 @@ def test_init_image_needs_a_plain_python_version(
     assert refused.exit_code == 1
     assert complaint in json.loads(refused.error)["error"]
     assert not (repository / IMAGE_DEFINITION).exists()
+
+
+def frozen_config(cluster: FakeCluster, run_id: str) -> dict[str, Any]:
+    return yaml.safe_load((cluster.run_directory(run_id) / "config.yaml").read_text())
+
+
+def test_check_queues_the_environment_check_as_a_smoke_run(
+    tinyruns: Command, cluster: FakeCluster
+) -> None:
+    cluster.hold_new_jobs()
+
+    submission = tinyruns("check")
+
+    assert submission.exit_code == 0, submission.error
+    assert submission.output["smoke"] is True
+    assert submission.output["config_name"] == "environment_check"
+    assert submission.output["resources"]["name"] == "cpu-small"
+    config = frozen_config(cluster, submission.output["run_id"])
+    assert config["stages"] == ["tinyruns.stages.environment_check"]
+    assert config["environment_check"]["require_gpu"] is False
+    assert "https://github.com" in config["environment_check"]["urls"]
+
+
+def test_gpu_check_requires_a_gpu_on_the_named_resources(
+    tinyruns: Command, cluster: FakeCluster
+) -> None:
+    cluster.hold_new_jobs()
+
+    unnamed = tinyruns("check", "--gpu")
+    submission = tinyruns("check", "--gpu", "--resources", "gpu-short")
+
+    assert "needs --resources" in json.loads(unnamed.error)["error"]
+    assert submission.exit_code == 0, submission.error
+    run_id = submission.output["run_id"]
+    assert frozen_config(cluster, run_id)["environment_check"]["require_gpu"] is True
+    assert "--nv" in (cluster.run_directory(run_id) / "job.sbatch").read_text()

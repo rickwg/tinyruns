@@ -1,0 +1,9 @@
+stages:
+  - tinyruns.stages.environment_check
+environment_check:
+  require_gpu: false
+  timeout_seconds: 20
+  urls:
+    - https://pypi.org
+    - https://github.com
+    - https://huggingface.co

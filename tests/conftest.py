@@ -28,6 +28,7 @@ RUN_COMMAND_PREFIX = "uv run python -m tinyruns.run "
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 PROXY_VARIABLES = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
 ON_CPU = ("--resources", "cpu-small")
+COMMANDS_THAT_READ_THE_PROFILE = ("submit", "check")
 MARKER_CONFIG = {
     "stages": [f"{STAGES_PACKAGE}.marker"],
     "marker": {"text": "marker report"},
@@ -229,7 +230,7 @@ def tinyruns(
     monkeypatch.chdir(repository)
 
     def run_command(*arguments: str) -> CommandResult:
-        if arguments[0] == "submit":
+        if arguments[0] in COMMANDS_THAT_READ_THE_PROFILE:
             arguments = (*arguments, "--cluster", str(cluster.profile_path))
         exit_code = main(list(arguments))
         captured = capsys.readouterr()
