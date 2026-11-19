@@ -1,6 +1,6 @@
 [project]
 name = "tinyruns"
-version = "0.1.0.dev2"
+version = "0.1.0"
 description = "Run directories for experiments, and a command that runs them on a Slurm cluster in Apptainer."
 readme = "README.md"
 requires-python = ">=3.14"

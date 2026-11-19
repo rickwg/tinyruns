@@ -49,7 +49,7 @@ The [guide](src/tinyruns/guide.md) goes from an empty project to a full run on t
 
 ## Status
 
-Early. It runs the experiments of one project on one Slurm cluster, and its own tests use a simulated cluster. Its interface may change before `v0.1.0`.
+Early. It runs the experiments of one project on one Slurm cluster, and its own tests use a simulated cluster. Its interface may still change.
 
 ## Licence
 
