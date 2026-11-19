@@ -46,7 +46,19 @@ def repository_root(directory: Path) -> Path:
     return Path(git_output(directory, "rev-parse", "--show-toplevel").strip())
 
 
+def require_snapshot_paths(repository: Path) -> None:
+    missing_paths = [
+        path for path in SNAPSHOT_PATHS if not (repository / path).exists()
+    ]
+    if missing_paths:
+        raise ExperimentError(
+            f"{repository} lacks {missing_paths}. Every run records the state of "
+            f"{', '.join(SNAPSHOT_PATHS)}."
+        )
+
+
 def take_code_snapshot(repository: Path) -> CodeSnapshot:
+    require_snapshot_paths(repository)
     with tempfile.TemporaryDirectory() as scratch_directory:
         scratch_index = Path(scratch_directory) / "index"
         git_output(

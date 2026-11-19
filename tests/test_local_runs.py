@@ -72,6 +72,17 @@ def test_local_smoke_run_does_not_unlock_a_full_cluster_run(
     assert locations[cluster_smoke.output["run_id"]] == "cluster"
 
 
+def test_project_is_told_which_recorded_path_it_lacks(
+    tinyruns: Command, repository: Path
+) -> None:
+    (repository / "uv.lock").unlink()
+
+    refused = tinyruns("new", "configs/marker.yaml")
+
+    assert refused.exit_code == 1
+    assert "lacks ['uv.lock']" in json.loads(refused.error)["error"]
+
+
 @pytest.mark.parametrize("command", ["wait", "logs", "pull", "cancel", "resume"])
 def test_cluster_commands_explain_how_to_run_a_local_run(
     tinyruns: Command, command: str
