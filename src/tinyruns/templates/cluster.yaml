@@ -1,10 +1,24 @@
+# One cluster, as tinyruns sees it. Replace every value with your cluster's.
+# The file is not part of a run's recorded code, so editing it invalidates no run.
+
 name: my-cluster
+
+# Anything `ssh` accepts: an alias from ~/.ssh/config, or user@host. Logging in
+# must work without a prompt. Remove the line to run tinyruns on the cluster itself.
 ssh_host: my-cluster
+
+# {user} is your login name on the cluster, {project} the name in pyproject.toml.
+# code_root receives the code of each run, scratch_root the runs, images and caches.
 code_root: /home/{user}/{project}/code
 scratch_root: /scratch/{user}/{project}
+
+# A directory on the node's own disk, used while an image is built. Optional.
 node_local_scratch: /tmp
+
+# A run that reserves more GPU hours than this, GPUs times time limit, needs --confirm.
 gpu_hours_without_confirmation: 24
 
+# Set in every job and every image build. Remove it on a cluster without a proxy.
 environment:
   http_proxy: http://proxy.example.org:3128
   https_proxy: http://proxy.example.org:3128
@@ -13,13 +27,17 @@ environment:
   no_proxy: localhost,127.0.0.1
   NO_PROXY: localhost,127.0.0.1
 
+# The job that builds the image.
 image_build:
   partition: cpu
   time: "01:00:00"
   cpus: 8
   memory: 16G
 
+# What a smoke run gets when `tinyruns submit --smoke` names no --resources. Optional.
 smoke_resources: cpu-small
+
+# What `--resources <name>` can name. `gpus` and `constraint` are optional.
 resources:
   cpu-small:
     partition: cpu

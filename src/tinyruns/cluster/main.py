@@ -22,6 +22,7 @@ from tinyruns.cluster.operations import (
     run_summary,
     wait_for_run,
 )
+from tinyruns.cluster.profile import DEFAULT_CLUSTER_PROFILE
 from tinyruns.cluster.snapshot import repository_root
 from tinyruns.cluster.status import (
     is_cluster_run,
@@ -33,7 +34,10 @@ from tinyruns.cluster.submit import (
     resume_run,
     submit_run,
 )
-from tinyruns.cluster.templates import create_image_definition
+from tinyruns.cluster.templates import (
+    create_cluster_profile,
+    create_image_definition,
+)
 from tinyruns.run_config import RunConfigError
 from tinyruns.run_directory import (
     DONE,
@@ -45,7 +49,6 @@ from tinyruns.run_directory import (
 )
 from tinyruns.run_inputs import UnusableInputRunError
 
-DEFAULT_CLUSTER_PROFILE = Path(".cluster.yaml")
 EXIT_CODE_BY_FINAL_STATE = {DONE: 0, FAILED: 1}
 STILL_RUNNING_EXIT_CODE = 2
 
@@ -196,7 +199,10 @@ def init(arguments: argparse.Namespace, repository: Path) -> int:
     return 0
 
 
-PROJECT_FILE_CREATORS = {"image": create_image_definition}
+PROJECT_FILE_CREATORS = {
+    "cluster": create_cluster_profile,
+    "image": create_image_definition,
+}
 Handler = Callable[[argparse.Namespace, Path], int]
 
 
@@ -315,7 +321,8 @@ def add_init_command(commands: Any) -> None:
     parser.add_argument(
         "project_file",
         choices=sorted(PROJECT_FILE_CREATORS),
-        help="`image` writes the Apptainer definition apptainer/image.def.",
+        help=f"`cluster` writes the cluster profile {DEFAULT_CLUSTER_PROFILE}, "
+        "`image` the Apptainer definition apptainer/image.def.",
     )
     parser.set_defaults(handler=init)
 

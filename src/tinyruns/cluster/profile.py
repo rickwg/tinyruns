@@ -9,6 +9,7 @@ import yaml
 
 from tinyruns.cluster.errors import ExperimentError
 
+DEFAULT_CLUSTER_PROFILE = Path(".cluster.yaml")
 TIME_LIMIT_PATTERN = re.compile(r"(?:(\d+)-)?(\d{1,2}):(\d{2}):(\d{2})")
 REMOTE_PATH_PATTERN = re.compile(r"/[A-Za-z0-9_./-]+")
 ENVIRONMENT_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -146,7 +147,10 @@ def smoke_resources_from(
 
 def profile_content(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        raise ExperimentError(f"Cluster profile {path} does not exist.")
+        raise ExperimentError(
+            f"Cluster profile {path} does not exist. `tinyruns init cluster` writes "
+            f"{DEFAULT_CLUSTER_PROFILE} from a template."
+        )
     content = yaml.safe_load(path.read_text())
     missing_settings = [
         setting
