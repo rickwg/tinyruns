@@ -14,6 +14,7 @@ from tinyruns.cluster.profile import load_cluster_profile
 CLUSTER_PROFILE = ".cluster.yaml"
 IMAGE_DEFINITION = Path("apptainer") / "image.def"
 PYTHON_VERSION_FILE = ".python-version"
+MAX_SKILL_DESCRIPTION_LENGTH = 1024
 
 
 def test_init_cluster_writes_a_profile_that_loads(
@@ -152,7 +153,13 @@ def command_names() -> list[str]:
     return listed_commands.group(1).split(",")
 
 
-def test_guide_is_printed_as_text(
+def front_matter(skill_file_content: str) -> dict[str, Any]:
+    before, settings, _guide = skill_file_content.split("---\n", 2)
+    assert before == ""
+    return yaml.safe_load(settings)
+
+
+def test_guide_is_printed_in_a_form_that_works_as_a_skill(
     repository: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -164,7 +171,10 @@ def test_guide_is_printed_as_text(
     printed = capsys.readouterr().out
     assert exit_code == 0
     assert printed == guide_text()
-    assert printed.startswith("# tinyruns\n")
+    described = front_matter(printed)
+    assert described.keys() == {"name", "description"}
+    assert described["name"] == "tinyruns"
+    assert 0 < len(described["description"]) <= MAX_SKILL_DESCRIPTION_LENGTH
 
 
 def test_guide_names_every_command() -> None:

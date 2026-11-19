@@ -1,60 +1,32 @@
-# tinyruns
+---
+name: tinyruns
+description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, input runs, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
+---
 
-A run is one directory, `artifacts/runs/<run_id>/`. `tinyruns` creates it from a config, executes it as a Slurm job inside the project's Apptainer image, and copies it back. The same directory runs unchanged on this machine.
+# Getting started with tinyruns
+
+A run is one directory, `artifacts/runs/<run_id>/`. `tinyruns` creates it from a config, executes it as a Slurm job inside your project's Apptainer image, and copies it back. The same directory runs unchanged on your own machine.
+
+This guide goes from an empty project to a full run on the cluster, in the order you would do it. The tables at the end list every command and every file.
 
 Run the commands from inside the project, as `uv run tinyruns <command>`. Every command prints JSON. A failure exits non-zero with `{"error": "..."}` on stderr. Only `tinyruns guide` prints text: this guide.
 
-## The usual sequence
+## 1. Set up the project
 
-```bash
-uv run tinyruns submit configs/train.yaml --smoke          # prints the manifest with the run_id
-uv run tinyruns wait <run_id>                              # in the background, not in a polling loop
-uv run tinyruns pull <run_id>
-git commit                                                 # a full run needs committed code
-uv run tinyruns submit configs/train.yaml --resources gpu-1
-uv run tinyruns wait <run_id>
-uv run tinyruns pull <run_id>
-```
+The project is a git repository managed by uv, with its code as an installable package under `src/` and a `.python-version` file. `uv init --package` creates one.
 
-- **A smoke run** tests the working tree, committed or not, with a short job. It is also the run that downloads models into the shared cache.
-- **A full run** needs `--resources`, committed code, and a smoke run of the same code and config that finished on the cluster. Committing does not invalidate the smoke run. Changing `src`, `pyproject.toml`, `uv.lock`, `apptainer`, the config or its inputs does.
-- **`--confirm` and `--skip-smoke-check` override guardrails.** Pass them only when the human has said so.
+1. **Depend on tinyruns:** `uv add --raw "tinyruns @ git+https://github.com/rickwg/tinyruns@<tag>"`. `--raw` writes the reference into `dependencies`, where pip reads it too.
+2. **Describe the cluster:** `uv run tinyruns init cluster` writes `.cluster.yaml`. Replace its values with your cluster's; [the cluster profile](#the-cluster-profile) explains them. The file may stay out of git: a line `.cluster.yaml` in `.git/info/exclude` ignores it and leaves no trace in the repository.
+3. **Define the image:** `uv run tinyruns init image` writes `apptainer/image.def` for the project's Python version. The file is yours to change from then on.
+4. **Ignore the runs:** add `artifacts/` to `.gitignore`.
+5. **Commit.** Every run records the commit it was made from, so the repository needs one.
+6. **Check the cluster:** `uv run tinyruns check` queues a short job that reports what a job sees and which URLs it reaches. Fetch its `report.md` with `wait` and `pull`, as in [step 5](#5-run-it-on-the-cluster). On a cluster with GPUs, `uv run tinyruns check --gpu --resources <name>` fails unless the job sees a CUDA device; it needs PyTorch among the project's dependencies.
 
-## Commands
+Your machine needs `git`, `ssh` and `rsync`, and a login to the cluster that works without a prompt. The cluster needs Slurm, `rsync` and Apptainer with `apptainer build --fakeroot`.
 
-| Command | Effect |
-|---|---|
-| `tinyruns new <config> [--smoke]` | Creates a run directory on this machine without contacting the cluster, and prints the command that runs it as `run_with`. Such a run does not count as the smoke run that a full run needs. |
-| `tinyruns submit <config> --smoke` | Copies the working tree's code to the cluster, builds the image if `uv.lock` or `apptainer/image.def` changed, and queues a short run on the profile's `smoke_resources`. |
-| `tinyruns submit <config> --resources <name>` | Queues a full run on the named resources of the cluster profile. |
-| `tinyruns wait <run_id>` | Blocks until the run ends. Exit code 0 for done, 1 for failed, 2 for still running after `--timeout <seconds>`. |
-| `tinyruns pull <run_id>` | Copies the run directory back, without `heavy/` unless `--heavy` is given. |
-| `tinyruns status [<run_id>]` | Asks the cluster for the state of one run, or of every unfinished run. |
-| `tinyruns logs <run_id>` | Shows the end of the run's Slurm log. |
-| `tinyruns ls` | Lists the runs known on this machine, without asking the cluster. |
-| `tinyruns cancel <run_id>` | Cancels the run's Slurm job. |
-| `tinyruns resume <run_id>` | Queues a failed run again, in its directory. |
-| `tinyruns check` | Queues a smoke run that reports what a job on the cluster sees and which URLs it reaches. |
-| `tinyruns init cluster`, `tinyruns init image` | Write `.cluster.yaml` and `apptainer/image.def` from templates. Neither overwrites a file. |
-| `tinyruns guide` | Prints this guide. |
+## 2. Write a stage
 
-`uv run python -m tinyruns.run artifacts/runs/<run_id>` runs a run directory on this machine, whether `tinyruns new` created it or `tinyruns pull` fetched it. `--stage <name>` runs one of its stages.
-
-## A run directory
-
-| Path | Content |
-|---|---|
-| `config.yaml` | the config as frozen when the run was created |
-| `manifest.json` | the code's commit and tree, the tinyruns version, the resources, the cluster, the image and the Slurm job IDs |
-| `status.json` | the state: `created`, `queued`, `running`, `done` or `failed`, with the failure if there is one |
-| `slurm.out` | the job's log |
-| `code.patch` | the uncommitted changes the run included, if any |
-| `metrics.jsonl`, `report.md`, `figures/` | what the stages write |
-| `heavy/` | large outputs such as checkpoints, left on the cluster unless pulled with `--heavy` |
-
-## Stages
-
-A stage is a module under `src/` with a function `run_stage(run_directory, config)`:
+A stage is one step of a run, such as training or evaluation. It is a module under `src/` with a function `run_stage(run_directory, config)`:
 
 ```python
 from typing import Any
@@ -76,7 +48,7 @@ def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
 - **Everything a job executes must be under `src/`.** Only `src`, `pyproject.toml`, `uv.lock` and `apptainer` reach the cluster.
 - **Keep a stage thin.** It reads its section of the config, calls library code and writes into the run directory.
 
-## Configs
+## 3. Write a config
 
 ```yaml
 stages:
@@ -88,9 +60,44 @@ train:
 
 - **`stages`** lists full module paths, which run in order. Every other top-level key is the project's own.
 - **A config names no location.** A value that starts with `/` or `~` is rejected.
-- **A config names no cluster resources.** They are chosen with `--resources` and recorded in the manifest.
+- **A config names no cluster resources.** They are chosen with `--resources` and recorded in the run's manifest.
 
-## Reading another run
+## 4. Try it on your machine
+
+```bash
+uv run tinyruns new configs/train.yaml --smoke        # prints the run_id, and the next command as run_with
+uv run python -m tinyruns.run artifacts/runs/<run_id>
+```
+
+`tinyruns new` creates the run directory without contacting the cluster. `--stage <name>` on the second command runs one stage. A run made this way does not count as the smoke run that a full run needs.
+
+## 5. Run it on the cluster
+
+```bash
+uv run tinyruns submit configs/train.yaml --smoke          # prints the manifest with the run_id
+uv run tinyruns wait <run_id>
+uv run tinyruns pull <run_id>
+git commit
+uv run tinyruns submit configs/train.yaml --resources gpu-1
+uv run tinyruns wait <run_id>
+uv run tinyruns pull <run_id>
+```
+
+- **A smoke run** tests the working tree, committed or not, with a short job on the profile's `smoke_resources`. It builds the image if `uv.lock` or `apptainer/image.def` changed, and it is the run that downloads models into the shared cache.
+- **A full run** needs `--resources`, committed code, and a smoke run of the same code and config that finished on the cluster. Committing does not invalidate the smoke run. Changing `src`, `pyproject.toml`, `uv.lock`, `apptainer`, the config or its inputs does.
+- **`tinyruns wait`** blocks until the run ends, with exit code 0 for done, 1 for failed and 2 for still running after `--timeout <seconds>`. Run it in the background; do not poll `status` in a loop.
+- **`tinyruns pull`** copies the run directory back, without `heavy/` unless `--heavy` is given. A pulled run reruns on your machine with the command from step 4.
+- **`--confirm` and `--skip-smoke-check` override guardrails:** the GPU-hour limit of the profile, and the smoke run before a full run. They are a human's decision. An agent passes them only when the human has said so.
+
+## 6. Watch and repair runs
+
+- **`tinyruns status <run_id>`** asks the cluster for the run's state. Without a run ID it reports every unfinished run. A failed run's status holds the reason and the end of its log.
+- **`tinyruns logs <run_id>`** shows the end of the Slurm log, `--lines <n>` of it.
+- **`tinyruns ls`** lists the runs known on your machine, without asking the cluster.
+- **`tinyruns cancel <run_id>`** cancels the job. The run is then failed.
+- **`tinyruns resume <run_id>`** queues a failed run again, in its directory, with the same code and config.
+
+## 7. Read another run
 
 A run reads the outputs of a finished run through a named input, so one training run can be evaluated many times.
 
@@ -100,17 +107,36 @@ A run reads the outputs of a finished run through a named input, so one training
 - **For a local rerun, pull the input run too:** `tinyruns pull <input_run_id> --heavy`.
 - **Runs do not cross projects.** An input is a sibling directory of the run that reads it.
 
-## Setting up a project
+## Every command
 
-The project is a git repository managed by uv, with its code as an installable package under `src/` and a `.python-version` file.
+| Command | Effect |
+|---|---|
+| `tinyruns init cluster` | Writes the cluster profile `.cluster.yaml` from a template. Does not overwrite. |
+| `tinyruns init image` | Writes the image definition `apptainer/image.def` from a template. Does not overwrite. |
+| `tinyruns check` | Queues a smoke run that reports what a job on the cluster sees and which URLs it reaches. `--gpu` fails it unless a CUDA device is visible. |
+| `tinyruns new <config>` | Creates a run directory on this machine, without the cluster. `--smoke` freezes it as a short test run. |
+| `tinyruns submit <config>` | Copies the code to the cluster, builds the image if needed, and queues the run. `--smoke` for a smoke run, `--resources <name>` for a full run. |
+| `tinyruns wait <run_id>` | Blocks until the run ends. |
+| `tinyruns pull <run_id>` | Copies the run directory back. |
+| `tinyruns status [<run_id>]` | Asks the cluster for the state of one run, or of every unfinished run. |
+| `tinyruns logs <run_id>` | Shows the end of the run's Slurm log. |
+| `tinyruns ls` | Lists the runs known on this machine. |
+| `tinyruns cancel <run_id>` | Cancels the run's Slurm job. |
+| `tinyruns resume <run_id>` | Queues a failed run again, in its directory. |
+| `tinyruns guide` | Prints this guide. |
+| `python -m tinyruns.run <run_directory>` | Runs the stages of a run directory, on this machine or in the job. |
 
-1. `uv add --raw "tinyruns @ git+https://github.com/rickwg/tinyruns@<tag>"`. `--raw` writes the reference into `dependencies`, where pip reads it too.
-2. `uv run tinyruns init cluster`, then replace the values in `.cluster.yaml` with the cluster's. The file may stay out of git: a line `.cluster.yaml` in `.git/info/exclude` ignores it without a trace in the repository.
-3. `uv run tinyruns init image`, then commit `apptainer/image.def`.
-4. Add `artifacts/` to `.gitignore`.
-5. `uv run tinyruns check`, then `wait` and `pull` the run and read its `report.md`. On a cluster with GPUs, `uv run tinyruns check --gpu --resources <name>` fails unless the job sees a CUDA device; it needs PyTorch among the project's dependencies.
+## A run directory
 
-The machine that submits needs `git`, `ssh` and `rsync`, and a login to the cluster that works without a prompt. The cluster needs Slurm, `rsync` and Apptainer with `apptainer build --fakeroot`.
+| Path | Content |
+|---|---|
+| `config.yaml` | the config as frozen when the run was created |
+| `manifest.json` | the code's commit and tree, the tinyruns version, the resources, the cluster, the image and the Slurm job IDs |
+| `status.json` | the state: `created`, `queued`, `running`, `done` or `failed`, with the failure if there is one |
+| `slurm.out` | the job's log |
+| `code.patch` | the uncommitted changes the run included, if any |
+| `metrics.jsonl`, `report.md`, `figures/` | what the stages write |
+| `heavy/` | large outputs such as checkpoints, left on the cluster unless pulled with `--heavy` |
 
 ## The cluster profile
 
@@ -135,4 +161,4 @@ The machine that submits needs `git`, `ssh` and `rsync`, and a login to the clus
 - **The image is built again** when `apptainer/image.def` or `uv.lock` changes, and reused otherwise.
 - **Any definition works if** `python` on its `PATH` has the locked dependencies, `tinyruns` among them, and the directories `/workdir`, `/mnt/runs` and `/mnt/cache/hf` exist.
 - **In a job,** the code is at `/workdir` read-only with `PYTHONPATH=/workdir/src`, the run directory is under `/mnt/runs`, and `HF_HOME` is `/mnt/cache/hf`, shared by the project's runs. A full run sets `HF_HUB_OFFLINE=1`.
-- **A lock that takes a package from a path on this machine is refused,** because the build on the cluster cannot reach it.
+- **A lock that takes a package from a path on your machine is refused,** because the build on the cluster cannot reach it.

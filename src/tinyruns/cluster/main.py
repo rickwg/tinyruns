@@ -380,7 +380,9 @@ def add_init_command(commands: Any) -> None:
 
 def add_guide_command(commands: Any) -> None:
     parser = commands.add_parser(
-        "guide", help="Print how to work with tinyruns, for people and agents."
+        "guide",
+        help="Print the getting-started guide. It is also a valid skill file for "
+        "a coding agent.",
     )
     parser.set_defaults(handler=guide)
 

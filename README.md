@@ -43,7 +43,16 @@ uv run tinyruns init image      # writes apptainer/image.def, the image your job
 uv run tinyruns check           # queues a job that reports what the cluster provides
 ```
 
-`uv run tinyruns guide` prints the rest: every command, the run directory, and how to write a stage and a config.
+## Guide
+
+The [guide](src/tinyruns/guide.md) goes from an empty project to a full run on the cluster: writing a stage and a config, trying a run on your machine, smoke runs and full runs, and reading one run from another. It ends with tables of every command, the run directory and the cluster profile. `uv run tinyruns guide` prints it.
+
+The guide is also a valid skill file. Read it yourself, or let a coding agent such as Claude Code work from it:
+
+```bash
+mkdir -p ~/.claude/skills/tinyruns
+uv run tinyruns guide > ~/.claude/skills/tinyruns/SKILL.md
+```
 
 ## Status
 
