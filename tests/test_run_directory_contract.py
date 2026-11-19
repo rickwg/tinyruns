@@ -1,7 +1,9 @@
 import functools
 import http.server
 import json
+import sys
 import threading
+import types
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -134,6 +136,64 @@ def test_last_part_shared_by_two_stages_selects_neither() -> None:
     with pytest.raises(RunConfigError, match="names 2 of this run's stages"):
         selected_stage_names(config, only_stage="run")
     assert selected_stage_names(config, only_stage="training.run") == ["training.run"]
+
+
+def torch_with_devices(device_names: list[str]) -> types.ModuleType:
+    torch = types.ModuleType("torch")
+    torch.__version__ = "0.0.0+scripted"
+    torch.cuda = types.SimpleNamespace(
+        is_available=lambda: bool(device_names),
+        device_count=lambda: len(device_names),
+        get_device_name=lambda index: device_names[index],
+    )
+    return torch
+
+
+def required_gpu_config() -> dict[str, Any]:
+    return {
+        "stages": [ENVIRONMENT_CHECK_STAGE],
+        "environment_check": {"require_gpu": True},
+    }
+
+
+def test_environment_check_reports_the_gpus_that_torch_sees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "torch", torch_with_devices(["Scripted GPU"]))
+    run_directory = run_directory_with(tmp_path, required_gpu_config())
+
+    run_stages(run_directory)
+
+    recorded = json.loads(run_directory.metrics_path.read_text())
+    assert recorded["torch"] == "0.0.0+scripted"
+    assert recorded["gpus"] == ["Scripted GPU"]
+    assert "Result: passed" in run_directory.report_path.read_text()
+
+
+def test_environment_check_fails_when_a_required_gpu_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "torch", torch_with_devices([]))
+    run_directory = run_directory_with(tmp_path, required_gpu_config())
+
+    with pytest.raises(RuntimeError, match="no CUDA device is available"):
+        run_stages(run_directory)
+
+
+def test_environment_check_runs_without_torch_unless_a_gpu_is_required(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(sys.modules, "torch", None)
+    run_directory = run_directory_with(tmp_path, environment_check_config(urls=[]))
+
+    run_stages(run_directory)
+
+    recorded = json.loads(run_directory.metrics_path.read_text())
+    assert "torch" not in recorded
+    assert "cuda_available" not in recorded
+    run_directory.config_path.write_text(yaml.safe_dump(required_gpu_config()))
+    with pytest.raises(RuntimeError, match="PyTorch is not installed"):
+        run_stages(run_directory)
 
 
 def test_url_response_tells_reachable_from_unreachable(

@@ -5,8 +5,6 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-import torch
-
 from tinyruns.run_config import input_run_ids, is_smoke_test
 from tinyruns.run_directory import (
     RunDirectory,
@@ -26,18 +24,36 @@ REPORTED_ENVIRONMENT_VARIABLES = (
 DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
-def environment_facts() -> dict[str, Any]:
+def torch_facts() -> dict[str, Any]:
+    try:
+        import torch
+    except ImportError:
+        return {}
     return {
-        "host": socket.gethostname(),
-        "python": platform.python_version(),
         "torch": torch.__version__,
         "cuda_available": torch.cuda.is_available(),
         "gpus": [
             torch.cuda.get_device_name(index)
             for index in range(torch.cuda.device_count())
         ],
+    }
+
+
+def environment_facts() -> dict[str, Any]:
+    return {
+        "host": socket.gethostname(),
+        "python": platform.python_version(),
+        **torch_facts(),
         **{name: os.environ.get(name) for name in REPORTED_ENVIRONMENT_VARIABLES},
     }
+
+
+def missing_gpu(facts: dict[str, Any]) -> str | None:
+    if "torch" not in facts:
+        return "PyTorch is not installed, so no CUDA device can be looked for"
+    if not facts["cuda_available"]:
+        return "no CUDA device is available"
+    return None
 
 
 def url_response(url: str, timeout_seconds: float) -> str:
@@ -67,8 +83,8 @@ def failed_checks(
         for url, response in url_responses.items()
         if response.startswith("unreachable")
     ]
-    if settings.get("require_gpu", False) and not facts["cuda_available"]:
-        failures.append("no CUDA device is available")
+    if settings.get("require_gpu", False) and missing_gpu(facts) is not None:
+        failures.append(missing_gpu(facts))
     return failures
 
 
