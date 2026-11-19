@@ -111,6 +111,7 @@ def submit(arguments: argparse.Namespace, repository: Path) -> int:
         repository=repository,
         config_path=arguments.config,
         cluster_profile_path=arguments.cluster or repository / DEFAULT_CLUSTER_PROFILE,
+        resources=arguments.resources,
         smoke=arguments.smoke,
         confirmed=arguments.confirm,
         skip_smoke_check=arguments.skip_smoke_check,
@@ -223,6 +224,12 @@ def add_submit_command(commands: Any) -> None:
         "--smoke",
         action="store_true",
         help="Short test run; may use uncommitted code and may download models.",
+    )
+    parser.add_argument(
+        "--resources",
+        metavar="NAME",
+        help="Resources from the cluster profile. Needed for a full run; a smoke "
+        "run without it uses the profile's `smoke_resources`.",
     )
     parser.add_argument(
         "--confirm",

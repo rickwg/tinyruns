@@ -6,6 +6,7 @@ import yaml
 
 from conftest import (
     MARKER_CONFIG,
+    ON_CPU,
     STAGES_PACKAGE,
     Command,
     FakeCluster,
@@ -55,9 +56,9 @@ def test_local_smoke_run_does_not_unlock_a_full_cluster_run(
     created = tinyruns("new", "configs/marker.yaml", "--smoke").output
     run_locally(repository, created["run_with"])
 
-    refused = tinyruns("submit", "configs/marker.yaml")
+    refused = tinyruns("submit", "configs/marker.yaml", *ON_CPU)
     cluster_smoke = tinyruns("submit", "configs/marker.yaml", "--smoke")
-    allowed = tinyruns("submit", "configs/marker.yaml")
+    allowed = tinyruns("submit", "configs/marker.yaml", *ON_CPU)
 
     assert refused.exit_code == 1
     assert "on the cluster" in json.loads(refused.error)["error"]

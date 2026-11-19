@@ -7,6 +7,7 @@ import yaml
 
 from conftest import (
     MARKER_CONFIG,
+    ON_CPU,
     RUN_COMMAND_PREFIX,
     RUNS_DIRECTORY,
     Command,
@@ -110,15 +111,16 @@ def test_full_run_reads_only_full_runs_and_needs_its_own_smoke_run(
     tinyruns: Command, evaluation_config: str
 ) -> None:
     smoke_training = finished_cluster_run(tinyruns, "configs/marker.yaml", "--smoke")
-    full_training = finished_cluster_run(tinyruns, "configs/marker.yaml")
+    full_training = finished_cluster_run(tinyruns, "configs/marker.yaml", *ON_CPU)
     reads_smoke = ("--input", f"training={smoke_training}")
     reads_full = ("--input", f"training={full_training}")
+    full_evaluation = ("submit", evaluation_config, *ON_CPU)
     finished_cluster_run(tinyruns, evaluation_config, "--smoke", *reads_smoke)
 
-    smoke_input_refused = refusal(tinyruns, "submit", evaluation_config, *reads_smoke)
-    other_input_refused = refusal(tinyruns, "submit", evaluation_config, *reads_full)
+    smoke_input_refused = refusal(tinyruns, *full_evaluation, *reads_smoke)
+    other_input_refused = refusal(tinyruns, *full_evaluation, *reads_full)
     finished_cluster_run(tinyruns, evaluation_config, "--smoke", *reads_full)
-    finished_cluster_run(tinyruns, evaluation_config, *reads_full)
+    finished_cluster_run(tinyruns, evaluation_config, *ON_CPU, *reads_full)
 
     assert "a smoke run" in smoke_input_refused
     assert "No smoke run" in other_input_refused
@@ -153,7 +155,6 @@ def test_environment_check_reports_its_input_runs(
         "environment",
         {
             "stages": ["tinyruns.stages.environment_check"],
-            "resources": "cpu-small",
             "environment_check": {"urls": []},
         },
     )

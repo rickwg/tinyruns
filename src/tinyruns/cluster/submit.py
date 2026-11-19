@@ -48,6 +48,7 @@ class SubmitRequest:
     repository: Path
     config_path: Path
     cluster_profile_path: Path
+    resources: str | None
     smoke: bool
     confirmed: bool
     skip_smoke_check: bool
@@ -61,15 +62,27 @@ class ClusterPlacement:
     run_directory: str
 
 
+def default_resources(profile: ClusterProfile, smoke: bool) -> str:
+    if not smoke:
+        raise ExperimentError(
+            f"A full run needs --resources, one of {sorted(profile.resources)}."
+        )
+    if profile.smoke_resources is None:
+        raise ExperimentError(
+            f"Pass --resources, one of {sorted(profile.resources)}, or name the "
+            "resources of smoke runs as `smoke_resources` in the cluster profile."
+        )
+    return profile.smoke_resources
+
+
 def selected_resources(
-    config: dict[str, Any], profile: ClusterProfile, smoke: bool
+    requested: str | None, profile: ClusterProfile, smoke: bool
 ) -> Resources:
-    smoke_resources = config.get("smoke_test", {}).get("resources") if smoke else None
-    name = smoke_resources or config.get("resources")
+    name = requested or default_resources(profile, smoke)
     if name not in profile.resources:
         raise ExperimentError(
-            f"The config needs `resources`, one of {sorted(profile.resources)}; "
-            f"it has {name!r}."
+            f"The cluster profile has no resources '{name}'. It has "
+            f"{sorted(profile.resources)}."
         )
     return profile.resources[name]
 
@@ -80,7 +93,7 @@ def cluster_placement(request: SubmitRequest, plan: PlannedRun) -> ClusterPlacem
     )
     return ClusterPlacement(
         profile=profile,
-        resources=selected_resources(plan.config, profile, plan.smoke),
+        resources=selected_resources(request.resources, profile, plan.smoke),
         run_directory=f"{profile.runs_root}/{plan.run_id}",
     )
 

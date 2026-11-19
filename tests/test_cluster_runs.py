@@ -9,6 +9,7 @@ import yaml
 
 from conftest import (
     MARKER_CONFIG,
+    ON_CPU,
     RUNS_DIRECTORY,
     STAGES_DIRECTORY,
     STAGES_PACKAGE,
@@ -101,7 +102,7 @@ def test_full_run_needs_committed_code(tinyruns: Command, repository: Path) -> N
     marker_stage = repository / STAGES_DIRECTORY / "marker.py"
     marker_stage.write_text(marker_stage.read_text() + "\nEDITED = True\n")
 
-    submission = tinyruns("submit", "configs/marker.yaml")
+    submission = tinyruns("submit", "configs/marker.yaml", *ON_CPU)
 
     assert submission.exit_code == 1
     assert "Commit" in json.loads(submission.error)["error"]
@@ -111,14 +112,14 @@ def test_full_run_needs_committed_code(tinyruns: Command, repository: Path) -> N
 def test_full_run_needs_a_passed_smoke_run_of_the_same_code_and_config(
     tinyruns: Command, repository: Path, cluster: FakeCluster
 ) -> None:
-    refused = tinyruns("submit", "configs/marker.yaml")
+    refused = tinyruns("submit", "configs/marker.yaml", *ON_CPU)
     assert refused.exit_code == 1
     assert "--smoke" in json.loads(refused.error)["error"]
 
     smoke_run_id = submitted_smoke_run(tinyruns)
     (repository / "notes.md").write_text("Files outside the snapshot do not count.")
     commit_all(repository, "Notes")
-    full = tinyruns("submit", "configs/marker.yaml")
+    full = tinyruns("submit", "configs/marker.yaml", *ON_CPU)
 
     assert full.exit_code == 0, full.error
     full_run_id = full.output["run_id"]
@@ -141,10 +142,10 @@ def test_smoke_run_of_other_code_does_not_unlock_a_full_run(
     marker_stage.write_text(marker_stage.read_text() + "\nEDITED = True\n")
     commit_all(repository, "Change the stage")
 
-    assert tinyruns("submit", "configs/marker.yaml").exit_code == 1
-    assert (
-        tinyruns("submit", "configs/marker.yaml", "--skip-smoke-check").exit_code == 0
-    )
+    unchecked = ("configs/marker.yaml", *ON_CPU, "--skip-smoke-check")
+
+    assert tinyruns("submit", "configs/marker.yaml", *ON_CPU).exit_code == 1
+    assert tinyruns("submit", *unchecked).exit_code == 0
 
 
 def test_image_is_built_once_and_the_first_run_waits_for_it(
@@ -172,39 +173,58 @@ def test_failed_image_build_fails_the_run(
     assert status["slurm_state"] == "CANCELLED"
 
 
-def test_gpu_hours_above_the_limit_need_confirmation(
-    tinyruns: Command, repository: Path
-) -> None:
-    write_config(repository, "long", {**MARKER_CONFIG, "resources": "gpu-long"})
+def test_gpu_hours_above_the_limit_need_confirmation(tinyruns: Command) -> None:
+    long_smoke_run = ("configs/marker.yaml", "--smoke", "--resources", "gpu-long")
 
-    refused = tinyruns("submit", "configs/long.yaml", "--smoke")
-    confirmed = tinyruns("submit", "configs/long.yaml", "--smoke", "--confirm")
+    refused = tinyruns("submit", *long_smoke_run)
+    confirmed = tinyruns("submit", *long_smoke_run, "--confirm")
 
     assert refused.exit_code == 1
     assert "48 GPU hours" in json.loads(refused.error)["error"]
     assert confirmed.exit_code == 0, confirmed.error
 
 
-def test_smoke_run_uses_the_smoke_resources(
-    tinyruns: Command, repository: Path, cluster: FakeCluster
+def test_smoke_run_uses_the_smoke_resources_of_the_profile(
+    tinyruns: Command, cluster: FakeCluster
 ) -> None:
-    write_config(
-        repository,
-        "gpu",
-        {
-            **MARKER_CONFIG,
-            "resources": "gpu-long",
-            "smoke_test": {"resources": "gpu-short"},
-        },
-    )
+    submission = tinyruns("submit", "configs/marker.yaml", "--smoke").output
 
-    run_id = submitted_smoke_run(tinyruns, "configs/gpu.yaml")
+    job_script = cluster.run_directory(submission["run_id"]) / "job.sbatch"
+    assert submission["resources"]["name"] == "cpu-small"
+    assert "#SBATCH --time=00:10:00" in job_script.read_text()
+    assert "--nv" not in job_script.read_text()
 
-    job_script = (cluster.run_directory(run_id) / "job.sbatch").read_text()
+
+def test_run_uses_the_resources_named_on_the_command_line(
+    tinyruns: Command, cluster: FakeCluster
+) -> None:
+    submission = tinyruns(
+        "submit", "configs/marker.yaml", "--smoke", "--resources", "gpu-short"
+    ).output
+
+    job_script = (
+        cluster.run_directory(submission["run_id"]) / "job.sbatch"
+    ).read_text()
+    assert submission["resources"]["name"] == "gpu-short"
     assert "#SBATCH --time=01:00:00" in job_script
     assert "#SBATCH --gpus=1" in job_script
     assert "#SBATCH --constraint=GPU-80GB" in job_script
     assert "--nv" in job_script
+
+
+def test_run_without_resources_is_refused_unless_the_profile_covers_smoke_runs(
+    tinyruns: Command, cluster: FakeCluster
+) -> None:
+    full = tinyruns("submit", "configs/marker.yaml")
+    profile = yaml.safe_load(cluster.profile_path.read_text())
+    cluster.profile_path.write_text(
+        yaml.safe_dump({**profile, "smoke_resources": None})
+    )
+    smoke = tinyruns("submit", "configs/marker.yaml", "--smoke")
+
+    assert "A full run needs --resources" in json.loads(full.error)["error"]
+    assert "`smoke_resources`" in json.loads(smoke.error)["error"]
+    assert tinyruns("ls").output == []
 
 
 def test_queued_run_waits_then_finishes(
@@ -304,13 +324,11 @@ def test_unknown_stage_resources_and_run_are_rejected(
         "no_packaged_stage",
         {**MARKER_CONFIG, "stages": ["tinyruns.stages.absent"]},
     )
-    write_config(repository, "no_resources", {**MARKER_CONFIG, "resources": "huge"})
+    huge_smoke_run = ("configs/marker.yaml", "--smoke", "--resources", "huge")
 
     for config in ("configs/no_stage.yaml", "configs/no_packaged_stage.yaml"):
         assert "absent.py is missing" in tinyruns("submit", config, "--smoke").error
-    assert (
-        "cpu-small" in tinyruns("submit", "configs/no_resources.yaml", "--smoke").error
-    )
+    assert "no resources 'huge'" in tinyruns("submit", *huge_smoke_run).error
     assert "tinyruns ls" in tinyruns("status", "20260101-000000-nothing").error
     assert tinyruns("ls").output == []
 
@@ -323,7 +341,6 @@ def test_environment_check_runs_as_a_cluster_job(
         "environment",
         {
             "stages": ["tinyruns.stages.environment_check"],
-            "resources": "cpu-small",
             "environment_check": {"urls": []},
         },
     )
