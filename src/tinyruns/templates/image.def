@@ -9,7 +9,7 @@ From: python:{python_version}-slim
     export PATH=/opt/venv/bin:$PATH
 
 %post
-    mkdir -p /workdir /mnt/runs /mnt/cache/hf
+    mkdir -p /workdir /mnt/runs /mnt/data /mnt/cache/hf
     # git, because uv installs tinyruns from its git repository.
     # APT::Sandbox::User=root, because in a build without root privileges
     # apt's own user cannot write its temporary files.

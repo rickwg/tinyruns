@@ -6,6 +6,7 @@ from tinyruns.run_directory import SLURM_LOG_NAME
 
 CONTAINER_CODE = "/workdir"
 CONTAINER_RUNS = "/mnt/runs"
+CONTAINER_DATA = "/mnt/data"
 CONTAINER_HUGGING_FACE_CACHE = "/mnt/cache/hf"
 IMAGE_DEFINITION_NAME = "image.def"
 
@@ -74,6 +75,7 @@ def apptainer_exec_arguments(job: RunJob) -> list[str]:
         f"{job.code_directory}:{CONTAINER_CODE}:ro",
         f"{job.run_directory}:{container_run_directory(job.run_id)}",
         *(input_run_bind(job.profile, run_id) for run_id in job.input_run_ids),
+        f"{job.profile.data_root}:{CONTAINER_DATA}:ro",
         f"{job.profile.hugging_face_cache}:{CONTAINER_HUGGING_FACE_CACHE}",
     ]
     environment = container_environment(job.profile, job.smoke)
@@ -97,7 +99,8 @@ def run_job_script(job: RunJob) -> str:
         "#SBATCH --open-mode=append",
         "#SBATCH --kill-on-invalid-dep=yes",
         "set -euo pipefail",
-        f"mkdir -p {quote(job.profile.hugging_face_cache)}",
+        f"mkdir -p {quote(job.profile.hugging_face_cache)} "
+        f"{quote(job.profile.data_root)}",
         " \\\n    ".join(apptainer_exec_arguments(job)),
     ]
     return "\n".join(lines) + "\n"

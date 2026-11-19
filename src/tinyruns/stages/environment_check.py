@@ -6,6 +6,7 @@ import urllib.request
 from typing import Any
 
 from tinyruns.run_config import input_run_ids, is_smoke_test
+from tinyruns.run_data import data_directory
 from tinyruns.run_directory import (
     RunDirectory,
     append_metrics,
@@ -67,6 +68,14 @@ def url_response(url: str, timeout_seconds: float) -> str:
         return f"unreachable: {error}"
 
 
+def data_directory_description(run_directory: RunDirectory) -> str:
+    directory = data_directory(run_directory)
+    if not directory.is_dir():
+        return "missing"
+    access = "writable" if os.access(directory, os.W_OK) else "read-only"
+    return f"{access}, holds {sorted(entry.name for entry in directory.iterdir())}"
+
+
 def input_run_description(
     run_directory: RunDirectory, config: dict[str, Any], name: str
 ) -> str:
@@ -116,7 +125,11 @@ def report_markdown(
 def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
     settings = config.get("environment_check", {})
     timeout_seconds = settings.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)
-    facts = {**environment_facts(), "smoke_test": is_smoke_test(config)}
+    facts = {
+        **environment_facts(),
+        "smoke_test": is_smoke_test(config),
+        "data_directory": data_directory_description(run_directory),
+    }
     url_responses = {
         url: url_response(url, timeout_seconds) for url in settings.get("urls", [])
     }

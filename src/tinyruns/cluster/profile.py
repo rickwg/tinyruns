@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 from tinyruns.cluster.errors import ExperimentError
+from tinyruns.run_data import DATA_DIRECTORY_NAME
 
 DEFAULT_CLUSTER_PROFILE = Path(".cluster.yaml")
 TIME_LIMIT_PATTERN = re.compile(r"(?:(\d+)-)?(\d{1,2}):(\d{2}):(\d{2})")
@@ -50,6 +51,10 @@ class ClusterProfile:
     @property
     def runs_root(self) -> str:
         return f"{self.scratch_root}/runs"
+
+    @property
+    def data_root(self) -> str:
+        return f"{self.scratch_root}/{DATA_DIRECTORY_NAME}"
 
     @property
     def images_root(self) -> str:

@@ -25,7 +25,7 @@ ENVIRONMENT_CHECK_STAGE = "tinyruns.stages.environment_check"
 
 def run_directory_with(tmp_path: Path, config: dict[str, Any]) -> RunDirectory:
     run_directory = RunDirectory(tmp_path / "run")
-    run_directory.path.mkdir()
+    run_directory.path.mkdir(parents=True)
     run_directory.config_path.write_text(yaml.safe_dump(config))
     return run_directory
 
@@ -229,6 +229,27 @@ def test_environment_check_runs_without_torch_unless_a_gpu_is_required(
     run_directory.config_path.write_text(yaml.safe_dump(required_gpu_config()))
     with pytest.raises(RuntimeError, match="PyTorch is not installed"):
         run_stages(run_directory)
+
+
+def test_environment_check_reports_what_the_data_directory_holds(
+    tmp_path: Path,
+) -> None:
+    run_directory = run_directory_with(
+        tmp_path / "runs", environment_check_config(urls=[])
+    )
+
+    run_stages(run_directory)
+    (tmp_path / "data" / "answers").mkdir(parents=True)
+    run_stages(run_directory)
+
+    without_data, with_data = map(
+        json.loads, run_directory.metrics_path.read_text().splitlines()
+    )
+    assert without_data["data_directory"] == "missing"
+    assert with_data["data_directory"] == "writable, holds ['answers']"
+    assert "| data_directory | writable, holds ['answers'] |" in (
+        run_directory.report_path.read_text()
+    )
 
 
 def test_url_response_tells_reachable_from_unreachable(

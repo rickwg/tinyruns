@@ -140,6 +140,7 @@ def create_remote_roots(remote: Remote, profile: ClusterProfile) -> None:
         profile.code_root,
         profile.runs_root,
         profile.images_root,
+        profile.data_root,
         profile.hugging_face_cache,
     )
     remote.run("mkdir -p " + " ".join(quote(root) for root in roots))

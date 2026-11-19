@@ -2,6 +2,7 @@ import os
 from typing import Any
 
 from tinyruns.run_config import is_smoke_test
+from tinyruns.run_data import data_directory
 from tinyruns.run_directory import RunDirectory, append_metrics
 from tinyruns.run_inputs import input_run
 
@@ -31,9 +32,16 @@ def input_run_outputs(
     }
 
 
+def dataset_content(run_directory: RunDirectory, dataset_file: str) -> dict[str, str]:
+    return {
+        "dataset_content": (data_directory(run_directory) / dataset_file).read_text()
+    }
+
+
 def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
     settings = config["marker"]
     read_input = settings.get("read_input")
+    read_dataset = settings.get("read_dataset")
     print(f"marker stage runs: {settings['text']}", flush=True)
     append_metrics(
         run_directory,
@@ -45,6 +53,7 @@ def run_stage(run_directory: RunDirectory, config: dict[str, Any]) -> None:
                 if read_input
                 else {}
             ),
+            **(dataset_content(run_directory, read_dataset) if read_dataset else {}),
         },
     )
     run_directory.heavy_directory.mkdir(exist_ok=True)

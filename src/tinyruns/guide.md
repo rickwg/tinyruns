@@ -1,6 +1,6 @@
 ---
 name: tinyruns
-description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, input runs, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
+description: How to run experiments with the `tinyruns` command, as run directories on this machine or as Slurm jobs inside an Apptainer image. Walks from setting up a project to a full run, and covers every command, stages, configs, input runs, datasets, the cluster profile, the image and the guardrails. Use in a project that depends on the `tinyruns` package.
 ---
 
 # Getting started with tinyruns
@@ -107,6 +107,18 @@ A run reads the outputs of a finished run through a named input, so one training
 - **For a local rerun, pull the input run too:** `tinyruns pull <input_run_id> --heavy`.
 - **Runs do not cross projects.** An input is a sibling directory of the run that reads it.
 
+## 8. Read a dataset
+
+A model or a dataset on the Hugging Face Hub needs no place of its own: `HF_HOME` is a cache that the project's runs share, a smoke run downloads into it, and a full run reads it offline. A dataset from anywhere else goes into the data directory.
+
+- **On your machine** the data directory is `artifacts/data/`, beside `artifacts/runs/`. Give each dataset a directory of its own in it.
+- **In the stage,** `data_directory(run_directory)` from `tinyruns.run_data` returns the data directory, on your machine and in a job alike: `data_directory(run_directory) / "my_dataset"`.
+- **`tinyruns push-data`** copies `artifacts/data/` to the cluster. It adds and replaces files and deletes none, so a dataset that is only on the cluster stays there.
+- **On the cluster** the data directory is `data/` under the profile's `scratch_root`. A dataset too large for your machine can be put there directly.
+- **A job gets the data directory read-only.** What a run makes of a dataset goes into its own `heavy/`, and other runs read it as an [input](#7-read-another-run).
+- **A config names a dataset by its directory name,** never by a path.
+- **A run does not record its datasets.** The manifest holds the code and the config, not the content of the data directory. Put a version into the directory name of a dataset that can change.
+
 ## Every command
 
 | Command | Effect |
@@ -114,6 +126,7 @@ A run reads the outputs of a finished run through a named input, so one training
 | `tinyruns init cluster` | Writes the cluster profile `.cluster.yaml` from a template. Does not overwrite. |
 | `tinyruns init image` | Writes the image definition `apptainer/image.def` from a template. Does not overwrite. |
 | `tinyruns check` | Queues a smoke run that reports what a job on the cluster sees and which URLs it reaches. `--gpu` fails it unless a CUDA device is visible. |
+| `tinyruns push-data` | Copies the datasets in `artifacts/data/` to the cluster. Deletes nothing there. |
 | `tinyruns new <config>` | Creates a run directory on this machine, without the cluster. `--smoke` freezes it as a short test run. |
 | `tinyruns submit <config>` | Copies the code to the cluster, builds the image if needed, and queues the run. `--smoke` for a smoke run, `--resources <name>` for a full run. |
 | `tinyruns wait <run_id>` | Blocks until the run ends. |
@@ -140,13 +153,13 @@ A run reads the outputs of a finished run through a named input, so one training
 
 ## The cluster profile
 
-`.cluster.yaml` at the root of the project describes one cluster. `--cluster <path>` on `submit` and `check` reads another file. The profile is not part of a run's recorded code, so editing it invalidates no smoke run.
+`.cluster.yaml` at the root of the project describes one cluster. `--cluster <path>` on `submit`, `check` and `push-data` reads another file. The profile is not part of a run's recorded code, so editing it invalidates no smoke run.
 
 | Setting | Meaning |
 |---|---|
 | `name` | recorded in each run's manifest |
 | `ssh_host` | anything `ssh` accepts. Without it, the commands run on the machine `tinyruns` is on, for use on a login node. |
-| `code_root`, `scratch_root` | where the code of each run goes, and where runs, images and caches go. `{user}` is the login name, `{project}` the name in `pyproject.toml`. |
+| `code_root`, `scratch_root` | where the code of each run goes, and where runs, images, datasets and caches go. `{user}` is the login name, `{project}` the name in `pyproject.toml`. |
 | `node_local_scratch` | optional directory on a node's own disk for building images |
 | `environment` | optional variables, such as a proxy, set in every job and image build |
 | `image_build` | partition, time, CPUs and memory of the job that builds an image |
@@ -159,6 +172,6 @@ A run reads the outputs of a finished run through a named input, so one training
 `apptainer/image.def` belongs to the project. `tinyruns` never edits it, and builds it with `apptainer build --fakeroot` in a Slurm job, next to copies of `uv.lock` and `pyproject.toml`.
 
 - **The image is built again** when `apptainer/image.def` or `uv.lock` changes, and reused otherwise.
-- **Any definition works if** `python` on its `PATH` has the locked dependencies, `tinyruns` among them, and the directories `/workdir`, `/mnt/runs` and `/mnt/cache/hf` exist.
-- **In a job,** the code is at `/workdir` read-only with `PYTHONPATH=/workdir/src`, the run directory is under `/mnt/runs`, and `HF_HOME` is `/mnt/cache/hf`, shared by the project's runs. A full run sets `HF_HUB_OFFLINE=1`.
+- **Any definition works if** `python` on its `PATH` has the locked dependencies, `tinyruns` among them, and the directories `/workdir`, `/mnt/runs`, `/mnt/data` and `/mnt/cache/hf` exist.
+- **In a job,** the code is at `/workdir` read-only with `PYTHONPATH=/workdir/src`, the run directory is under `/mnt/runs`, the data directory is `/mnt/data` read-only, and `HF_HOME` is `/mnt/cache/hf`, shared by the project's runs. A full run sets `HF_HUB_OFFLINE=1`.
 - **A lock that takes a package from a path on your machine is refused,** because the build on the cluster cannot reach it.

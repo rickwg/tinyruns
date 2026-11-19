@@ -28,7 +28,7 @@ RUN_COMMAND_PREFIX = "uv run python -m tinyruns.run "
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
 PROXY_VARIABLES = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY")
 ON_CPU = ("--resources", "cpu-small")
-COMMANDS_THAT_READ_THE_PROFILE = ("submit", "check")
+COMMANDS_THAT_READ_THE_PROFILE = ("submit", "check", "push-data")
 MARKER_CONFIG = {
     "stages": [f"{STAGES_PACKAGE}.marker"],
     "marker": {"text": "marker report"},

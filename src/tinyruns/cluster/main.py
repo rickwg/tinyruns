@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from tinyruns.cluster.check import environment_check_config
+from tinyruns.cluster.data import push_data_directory
 from tinyruns.cluster.errors import ExperimentError
 from tinyruns.cluster.guide import guide_text
 from tinyruns.cluster.new_run import create_local_run, runs_root
@@ -24,7 +25,8 @@ from tinyruns.cluster.operations import (
     run_summary,
     wait_for_run,
 )
-from tinyruns.cluster.profile import DEFAULT_CLUSTER_PROFILE
+from tinyruns.cluster.profile import DEFAULT_CLUSTER_PROFILE, load_cluster_profile
+from tinyruns.cluster.project import project_name
 from tinyruns.cluster.snapshot import repository_root
 from tinyruns.cluster.status import (
     is_cluster_run,
@@ -146,6 +148,14 @@ def check(arguments: argparse.Namespace, repository: Path) -> int:
     return 0
 
 
+def push_data(arguments: argparse.Namespace, repository: Path) -> int:
+    profile = load_cluster_profile(
+        cluster_profile_path(arguments, repository), project_name(repository)
+    )
+    print_json(push_data_directory(repository, profile))
+    return 0
+
+
 def unfinished_runs(repository: Path) -> list[RunDirectory]:
     return [
         run_directory
@@ -242,17 +252,21 @@ def add_input_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_cluster_profile_option(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--cluster",
+        type=Path,
+        help=f"Cluster profile (YAML). Default: {DEFAULT_CLUSTER_PROFILE}.",
+    )
+
+
 def add_cluster_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--confirm",
         action="store_true",
         help="A human approved exceeding the cluster profile's GPU-hour limit.",
     )
-    parser.add_argument(
-        "--cluster",
-        type=Path,
-        help=f"Cluster profile (YAML). Default: {DEFAULT_CLUSTER_PROFILE}.",
-    )
+    add_cluster_profile_option(parser)
     add_input_option(parser)
 
 
@@ -312,6 +326,16 @@ def add_check_command(commands: Any) -> None:
     )
     add_cluster_options(parser)
     parser.set_defaults(handler=check)
+
+
+def add_push_data_command(commands: Any) -> None:
+    parser = commands.add_parser(
+        "push-data",
+        help="Copy the datasets in artifacts/data to the cluster, where jobs "
+        "read them.",
+    )
+    add_cluster_profile_option(parser)
+    parser.set_defaults(handler=push_data)
 
 
 def add_run_command(
@@ -396,6 +420,7 @@ def argument_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     add_init_command(commands)
     add_check_command(commands)
+    add_push_data_command(commands)
     add_new_command(commands)
     add_submit_command(commands)
     add_status_command(commands)

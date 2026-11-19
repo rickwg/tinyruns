@@ -16,8 +16,10 @@ from conftest import (
 )
 from tinyruns.cluster.errors import ExperimentError
 from tinyruns.cluster.job_script import (
+    CONTAINER_DATA,
     ImageBuildJob,
     RunJob,
+    container_run_directory,
     image_build_script,
     run_job_script,
 )
@@ -32,6 +34,8 @@ from tinyruns.cluster.remote import Remote, RemoteCommandError
 from tinyruns.cluster.slurm import parsed_job_id
 from tinyruns.cluster.snapshot import take_code_snapshot
 from tinyruns.cluster.status import reconciled_status
+from tinyruns.run_data import data_directory
+from tinyruns.run_directory import RunDirectory
 
 GPU_RESOURCES = Resources(
     name="gpu",
@@ -124,6 +128,25 @@ def test_job_script_binds_its_run_writable_and_input_runs_read_only() -> None:
     assert f"--bind {runs}/{own_run}:/mnt/runs/{own_run} " in script
     assert f"--bind {runs}/{input_run}:/mnt/runs/{input_run}:ro " in script
     assert script.count(":/mnt/runs/") == 2
+
+
+def test_job_script_binds_the_data_directory_read_only() -> None:
+    data = "/scratch/someone/project/data"
+
+    script = run_job_script(run_job(CPU_RESOURCES, smoke=True))
+
+    assert_bash_parses(script)
+    assert f"--bind {data}:/mnt/data:ro " in script
+    assert f"mkdir -p /scratch/someone/project/cache/hf {data}\n" in script
+
+
+def test_data_directory_is_beside_the_runs_in_the_job_and_on_the_cluster() -> None:
+    run_id = "20261118-120000-example-abc1234"
+    in_the_job = RunDirectory(Path(container_run_directory(run_id)))
+    on_the_cluster = RunDirectory(Path(profile().runs_root) / run_id)
+
+    assert data_directory(in_the_job) == Path(CONTAINER_DATA)
+    assert data_directory(on_the_cluster) == Path(profile().data_root)
 
 
 def test_smoke_cpu_job_script_has_no_gpu_and_may_download() -> None:

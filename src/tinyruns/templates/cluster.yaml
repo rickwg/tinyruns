@@ -8,7 +8,8 @@ name: my-cluster
 ssh_host: my-cluster
 
 # {user} is your login name on the cluster, {project} the name in pyproject.toml.
-# code_root receives the code of each run, scratch_root the runs, images and caches.
+# code_root receives the code of each run, scratch_root the runs, images, datasets
+# and caches.
 code_root: /home/{user}/{project}/code
 scratch_root: /scratch/{user}/{project}
 
