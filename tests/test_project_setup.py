@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +7,8 @@ import pytest
 import yaml
 
 from conftest import FIXTURE_PROJECT_NAME, Command, FakeCluster
+from tinyruns.cluster.guide import SKILL_FILE, guide_text
+from tinyruns.cluster.main import argument_parser, main
 from tinyruns.cluster.profile import load_cluster_profile
 
 CLUSTER_PROFILE = ".cluster.yaml"
@@ -142,3 +145,33 @@ def test_gpu_check_requires_a_gpu_on_the_named_resources(
     run_id = submission.output["run_id"]
     assert frozen_config(cluster, run_id)["environment_check"]["require_gpu"] is True
     assert "--nv" in (cluster.run_directory(run_id) / "job.sbatch").read_text()
+
+
+def command_names() -> list[str]:
+    listed_commands = re.search(r"\{(.+?)\}", argument_parser().format_usage())
+    return listed_commands.group(1).split(",")
+
+
+def test_guide_prints_the_skill_without_its_front_matter(
+    repository: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(repository)
+
+    exit_code = main(["guide"])
+
+    printed = capsys.readouterr().out
+    assert exit_code == 0
+    assert printed == guide_text()
+    assert printed.startswith("# tinyruns\n")
+    assert SKILL_FILE.read_text().startswith("---\nname: tinyruns\ndescription: ")
+    assert SKILL_FILE.read_text().endswith(printed)
+
+
+def test_guide_names_every_command() -> None:
+    commands = command_names()
+
+    assert "submit" in commands and "guide" in commands
+    for command in commands:
+        assert f"tinyruns {command}" in guide_text()

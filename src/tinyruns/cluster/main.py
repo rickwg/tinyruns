@@ -1,8 +1,8 @@
 """Create experiment runs, and submit, watch and fetch them on the cluster.
 
 Every command prints JSON on stdout and exits non-zero on failure, with the reason
-as JSON on stderr. A run made by `tinyruns new` or fetched by `tinyruns pull` runs
-locally with:
+as JSON on stderr; only `tinyruns guide` prints text. A run made by `tinyruns new`
+or fetched by `tinyruns pull` runs locally with:
 uv run python -m tinyruns.run artifacts/runs/<run_id>
 """
 
@@ -15,6 +15,7 @@ from typing import Any
 
 from tinyruns.cluster.check import environment_check_config
 from tinyruns.cluster.errors import ExperimentError
+from tinyruns.cluster.guide import guide_text
 from tinyruns.cluster.new_run import create_local_run, runs_root
 from tinyruns.cluster.operations import (
     cancel_run,
@@ -214,6 +215,11 @@ def resume(arguments: argparse.Namespace, repository: Path) -> int:
     return 0
 
 
+def guide(arguments: argparse.Namespace, repository: Path) -> int:
+    print(guide_text(), end="")
+    return 0
+
+
 def init(arguments: argparse.Namespace, repository: Path) -> int:
     print_json(PROJECT_FILE_CREATORS[arguments.project_file](repository))
     return 0
@@ -372,6 +378,13 @@ def add_init_command(commands: Any) -> None:
     parser.set_defaults(handler=init)
 
 
+def add_guide_command(commands: Any) -> None:
+    parser = commands.add_parser(
+        "guide", help="Print how to work with tinyruns, for people and agents."
+    )
+    parser.set_defaults(handler=guide)
+
+
 def argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tinyruns",
@@ -392,6 +405,7 @@ def argument_parser() -> argparse.ArgumentParser:
     add_run_command(
         commands, "resume", resume, "Queue a failed run again, in its directory."
     )
+    add_guide_command(commands)
     return parser
 
 
